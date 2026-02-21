@@ -487,6 +487,10 @@
     // Section 5: Avatar 状态控制
     // ============================================================
 
+    const _avatarVideoCache = {};   // 缓存已验证可用的视频 URL
+    let _avatarErrorCount = 0;       // 连续错误计数，防止无限重试
+    const MAX_AVATAR_ERRORS = 3;     // 最大连续错误次数
+
     function setAvatarState(newState) {
       if (newState === currentAvatarState) return;
       currentAvatarState = newState;
@@ -506,6 +510,18 @@
       const videoSrc = ACTIONS[newState];
       if (!videoSrc) return;
 
+      // 如果该视频之前加载失败过，跳过不再尝试
+      if (_avatarVideoCache[videoSrc] === false) {
+        console.warn(`跳过已知不可用的视频: ${newState}`);
+        return;
+      }
+
+      // 连续错误过多，停止尝试
+      if (_avatarErrorCount >= MAX_AVATAR_ERRORS) {
+        console.warn(`连续视频错误 ${_avatarErrorCount} 次，暂停视频切换`);
+        return;
+      }
+
       actionVideo.src = videoSrc;
       actionVideo.loop = true;
       actionVideo.muted = true;
@@ -515,6 +531,8 @@
 
       const onReady = () => {
         actionVideo.removeEventListener('canplay', onReady);
+        _avatarVideoCache[videoSrc] = true;  // 标记为可用
+        _avatarErrorCount = 0;                // 重置错误计数
         actionVideo.classList.add('visible');
         idleVideo.classList.remove('visible');
         actionVideo.play().catch(() => {});
@@ -588,8 +606,19 @@
     });
 
     actionVideo.addEventListener('error', () => {
-      if (isVoiceChatActive) return;
-      console.error('视频加载失败');
+      const failedSrc = actionVideo.src;
+      if (failedSrc) _avatarVideoCache[failedSrc] = false;  // 标记为不可用
+      _avatarErrorCount++;
+      console.warn(`视频加载失败 (${_avatarErrorCount}/${MAX_AVATAR_ERRORS}): ${failedSrc}`);
+
+      if (isVoiceChatActive) {
+        // 语音对话中：回到 idle 画面但不中断对话
+        actionVideo.classList.remove('visible');
+        idleVideo.classList.add('visible');
+        actionVideo.src = '';
+        currentAvatarState = 'idle';
+        return;
+      }
       statusEl.textContent = '视频加载失败，请先生成视频素材';
       resetToIdle();
     });
