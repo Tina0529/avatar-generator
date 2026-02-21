@@ -1,0 +1,28 @@
+{
+  "id": "star-cat",
+  "name": "星洛",
+  "subtitle": "Star Cat - Constellation Digital Avatar",
+  "dbName": "companion-star-cat",
+  "defaultVoice": "Kore",
+  "theme": {
+    "background": "linear-gradient(135deg, #1a1a3e 0%, #2d2b55 50%, #1a1a3e 100%)",
+    "accent": "#7c6fe0",
+    "accentDark": "#5a4fbf",
+    "fun": "#e06fd0",
+    "funDark": "#bf4fb0"
+  },
+  "actions": {
+    "basic": [
+      { "id": "speaking",  "emoji": "🗣", "label": "说话",   "status": "星洛在说话..." },
+      { "id": "listening", "emoji": "👂", "label": "倾听",   "status": "星洛在认真听..." },
+      { "id": "wave",      "emoji": "🐾", "label": "挥爪",   "status": "星洛挥挥爪~" },
+      { "id": "nod",       "emoji": "😊", "label": "点头",   "status": "星洛点点头~" },
+      { "id": "think",     "emoji": "🤔", "label": "思考",   "status": "星洛在思考..." }
+    ],
+    "fun": [
+      { "id": "sneeze",   "emoji": "✨", "label": "星光喷嚏", "status": "阿嚏！星星飞出来了~" },
+      { "id": "shy",      "emoji": "🫣", "label": "害羞捂脸", "status": "呜...好害羞 >.<" },
+      { "id": "tail_wag", "emoji": "🌟", "label": "星光尾巴", "status": "尾巴在发光呢~" }
+    ]
+  }
+}

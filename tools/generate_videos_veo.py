@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-使用 Google Veo API 生成狐小狸数字人视频
+使用 Google Veo API 为数字人角色生成动作视频
+支持多角色：通过 -c 参数指定角色 ID
 使用 image_to_video 方法，在 prompt 中强调回到起始姿势
 """
 
@@ -29,92 +30,236 @@ TARGET_ASPECT_RATIO = 9 / 16
 MIN_WIDTH = 360
 MIN_HEIGHT = 640
 
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.join(PROJECT_DIR, "assets")
-IDLE_IMAGE = os.path.join(ASSETS_DIR, "idle.jpg")
+TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(TOOLS_DIR)
+CHARACTERS_DIR = os.path.join(PROJECT_DIR, "characters")
 
-# 角色描述（统一用于所有 prompt）
-CHARACTER = (
+# ============================================================
+# 角色配置：每个角色的描述和动作提示词
+# ============================================================
+
+CHARACTERS = {}
+
+# ---------- 狐小狸 (fox-xiaoli) ----------
+
+_FOX_CHARACTER = (
     "A cute cartoon 3D orange fox cub with big round brown eyes, white fluffy chest fur, "
     "and a bushy orange tail with a white tip, sitting on green grass in a sunlit forest"
 )
 
-# 视频配置：动作名称 -> (提示词, 时长)
-VIDEOS = {
-    "idle": (
-        f"{CHARACTER}. The little fox sits perfectly still in a calm, relaxed resting pose. "
-        "Extremely subtle, lifelike micro-movements only: very slow gentle breathing motion in the chest, "
-        "occasional soft blink, and the tiniest ear twitch. "
-        "No head movement, no paw movement, no body shifting. "
-        "The overall impression is a peaceful, living creature at rest. Very minimal and natural. "
-        "The pose at the end is exactly the same as the beginning, creating a seamless loop.",
-        6
-    ),
-    "speaking": (
-        f"{CHARACTER}. The little fox has subtle mouth movements and gentle facial expression changes. "
-        "Its mouth opens and closes slightly as if talking, showing a friendly expression. "
-        "Subtle ear twitching. "
-        "At the end, it returns to the exact same neutral pose as the beginning with a calm, gentle smile.",
-        6
-    ),
-    "listening": (
-        f"{CHARACTER}. The little fox turns its head to the side and raises one front paw to its ear, "
-        "then holds completely still in this listening pose. "
-        "No mouth movement, no blinking, no body movement - perfectly still and focused. "
-        "The expression is calm, quiet, and deeply concentrated, like carefully listening to a faint sound. "
-        "The pose is maintained motionless throughout, simulating a real attentive listener. "
-        "At the end, it slowly lowers its paw and turns back, returning to the exact same neutral pose as the beginning, "
-        "with its head centered and a calm expression.",
-        6
-    ),
-    "wave": (
-        f"{CHARACTER}. The little fox raises one front paw and waves hello with a playful, cheerful expression. "
-        "Its tail sways gently with excitement. The movement is cute and energetic. "
-        "At the end, it lowers its paw and returns to the exact same neutral pose as the beginning, "
-        "sitting calmly with paws on the ground.",
-        6
-    ),
-    "nod": (
-        f"{CHARACTER}. The little fox simply nods its head up and down slowly and clearly, showing agreement. "
-        "Only the head moves - no paw movement, no body movement, no other gestures. "
-        "The mouth stays closed, the body stays perfectly still, only the head nods gently. "
-        "A soft, approving smile on its face. Minimal and clean motion. "
-        "At the end, it stops nodding and returns to the exact same neutral pose as the beginning, "
-        "with its head level and a calm expression.",
-        6
-    ),
-    "think": (
-        f"{CHARACTER}. The little fox shows a thoughtful expression, tilting its head slightly "
-        "and looking upward with one paw raised near its chin. Its eyes look contemplative and curious. "
-        "At the end, it lowers its paw and returns to the exact same neutral pose as the beginning, "
-        "with a calm, neutral expression.",
-        6
-    ),
-    "sneeze": (
-        f"{CHARACTER}. The little fox's nose twitches rapidly, its eyes squint, "
-        "then it lets out an adorable big sneeze - head jerking forward with ears flattening back. "
-        "After the sneeze, it shakes its head and looks slightly dazed with a funny expression. "
-        "At the end, it returns to the exact same neutral pose as the beginning, "
-        "with a calm, gentle smile.",
-        6
-    ),
-    "shy": (
-        f"{CHARACTER}. The little fox suddenly becomes shy and bashful. "
-        "It covers its face with both front paws, ears flatten back, and its tail curls around its body. "
-        "It peeks through its paws with one eye, looking adorably embarrassed. "
-        "At the end, it lowers its paws and returns to the exact same neutral pose as the beginning, "
-        "sitting calmly with a gentle smile.",
-        6
-    ),
-    "tail_wag": (
-        f"{CHARACTER}. The little fox looks back at its own bushy tail, then starts wagging it "
-        "enthusiastically from side to side with pure joy. Its whole body wiggles slightly with the movement. "
-        "It looks happy and excited, ears perked up. "
-        "At the end, it stops wagging and returns to the exact same neutral pose as the beginning, "
-        "sitting calmly facing forward.",
-        6
-    ),
+CHARACTERS["fox-xiaoli"] = {
+    "name": "狐小狸",
+    "emoji": "🦊",
+    "character": _FOX_CHARACTER,
+    "videos": {
+        "idle": (
+            f"{_FOX_CHARACTER}. The little fox sits perfectly still in a calm, relaxed resting pose. "
+            "Extremely subtle, lifelike micro-movements only: very slow gentle breathing motion in the chest, "
+            "occasional soft blink, and the tiniest ear twitch. "
+            "No head movement, no paw movement, no body shifting. "
+            "The overall impression is a peaceful, living creature at rest. Very minimal and natural. "
+            "The pose at the end is exactly the same as the beginning, creating a seamless loop.",
+            6
+        ),
+        "speaking": (
+            f"{_FOX_CHARACTER}. The little fox has subtle mouth movements and gentle facial expression changes. "
+            "Its mouth opens and closes slightly as if talking, showing a friendly expression. "
+            "Subtle ear twitching. "
+            "At the end, it returns to the exact same neutral pose as the beginning with a calm, gentle smile.",
+            6
+        ),
+        "listening": (
+            f"{_FOX_CHARACTER}. The little fox turns its head to the side and raises one front paw to its ear, "
+            "then holds completely still in this listening pose. "
+            "No mouth movement, no blinking, no body movement - perfectly still and focused. "
+            "The expression is calm, quiet, and deeply concentrated, like carefully listening to a faint sound. "
+            "The pose is maintained motionless throughout, simulating a real attentive listener. "
+            "At the end, it slowly lowers its paw and turns back, returning to the exact same neutral pose as the beginning, "
+            "with its head centered and a calm expression.",
+            6
+        ),
+        "wave": (
+            f"{_FOX_CHARACTER}. The little fox raises one front paw and waves hello with a playful, cheerful expression. "
+            "Its tail sways gently with excitement. The movement is cute and energetic. "
+            "At the end, it lowers its paw and returns to the exact same neutral pose as the beginning, "
+            "sitting calmly with paws on the ground.",
+            6
+        ),
+        "nod": (
+            f"{_FOX_CHARACTER}. The little fox simply nods its head up and down slowly and clearly, showing agreement. "
+            "Only the head moves - no paw movement, no body movement, no other gestures. "
+            "The mouth stays closed, the body stays perfectly still, only the head nods gently. "
+            "A soft, approving smile on its face. Minimal and clean motion. "
+            "At the end, it stops nodding and returns to the exact same neutral pose as the beginning, "
+            "with its head level and a calm expression.",
+            6
+        ),
+        "think": (
+            f"{_FOX_CHARACTER}. The little fox shows a thoughtful expression, tilting its head slightly "
+            "and looking upward with one paw raised near its chin. Its eyes look contemplative and curious. "
+            "At the end, it lowers its paw and returns to the exact same neutral pose as the beginning, "
+            "with a calm, neutral expression.",
+            6
+        ),
+        "sneeze": (
+            f"{_FOX_CHARACTER}. The little fox's nose twitches rapidly, its eyes squint, "
+            "then it lets out an adorable big sneeze - head jerking forward with ears flattening back. "
+            "After the sneeze, it shakes its head and looks slightly dazed with a funny expression. "
+            "At the end, it returns to the exact same neutral pose as the beginning, "
+            "with a calm, gentle smile.",
+            6
+        ),
+        "shy": (
+            f"{_FOX_CHARACTER}. The little fox suddenly becomes shy and bashful. "
+            "It covers its face with both front paws, ears flatten back, and its tail curls around its body. "
+            "It peeks through its paws with one eye, looking adorably embarrassed. "
+            "At the end, it lowers its paws and returns to the exact same neutral pose as the beginning, "
+            "sitting calmly with a gentle smile.",
+            6
+        ),
+        "tail_wag": (
+            f"{_FOX_CHARACTER}. The little fox looks back at its own bushy tail, then starts wagging it "
+            "enthusiastically from side to side with pure joy. Its whole body wiggles slightly with the movement. "
+            "It looks happy and excited, ears perked up. "
+            "At the end, it stops wagging and returns to the exact same neutral pose as the beginning, "
+            "sitting calmly facing forward.",
+            6
+        ),
+    },
 }
+
+# ---------- 星罗猫 (star-cat) ----------
+
+_CAT_CHARACTER = (
+    "A cute cartoon 3D lavender-gray cat with glowing constellation star-line patterns on its fur, "
+    "large deep-blue eyes with starlight reflections, small rounded ears with inner purple glow, "
+    "wearing a midnight blue hoodie with a crescent moon embroidery on the chest, "
+    "fluffy tail with gradient from lavender to deep indigo with twinkling star particles at the tip. "
+    "The cat is sitting on dark rooftop tiles at night. "
+    "Background: starry sky with constellations, crescent moon, distant warm city lights in soft bokeh, depth-of-field blur"
+)
+
+CHARACTERS["star-cat"] = {
+    "name": "星罗猫",
+    "emoji": "🐱",
+    "character": _CAT_CHARACTER,
+    "videos": {
+        "idle": (
+            f"{_CAT_CHARACTER}. The cat sits perfectly still in a calm, elegant posture on the rooftop edge. "
+            "Paws neatly together in front, tail gently curled around its body. "
+            "Extremely subtle, lifelike micro-movements only: very slow gentle breathing motion, "
+            "occasional soft blink. No head movement, no paw movement, no body shifting. "
+            "Regal, composed, dignified demeanor. The overall impression is a noble, peaceful creature at rest. "
+            "The pose at the end is exactly the same as the beginning, creating a seamless loop.",
+            6
+        ),
+        "speaking": (
+            f"{_CAT_CHARACTER}. The cat has its mouth clearly open with visible lip movements, "
+            "as if explaining something warmly. One paw slightly raised in a gentle explaining gesture. "
+            "Eyes bright and engaged, looking directly at the camera. "
+            "Body leans slightly forward while remaining seated on the rooftop. "
+            "No body shifting, no standing up. Only the mouth, face, and one paw are active. "
+            "At the end, it returns to the exact same neutral seated pose as the beginning, "
+            "with paws together and a calm, gentle smile.",
+            6
+        ),
+        "listening": (
+            f"{_CAT_CHARACTER}. The cat tilts its head clearly to one side, "
+            "one ear perked up noticeably higher than the other, leaning in attentively. "
+            "Eyes wide and focused, looking straight at the camera with full attention. "
+            "Mouth firmly closed. Body holds completely still and perfectly steady. "
+            "No mouth movement, no fidgeting, no body shifting. "
+            "Only the head tilt and ear position show active listening. Still, focused, attentive. "
+            "At the end, it slowly straightens its head, returning to the exact same neutral pose as the beginning, "
+            "with head centered and a calm expression.",
+            6
+        ),
+        "wave": (
+            f"{_CAT_CHARACTER}. The cat raises its right paw up high in a clear friendly wave, "
+            "paw pads visible, fingers spread slightly. The left paw stays resting on the rooftop tile. "
+            "A cheerful bright smile with eyes slightly squinted from joy. Tail lifts gently behind. "
+            "No body shifting from the seated position, no standing up. Only the right paw waves. "
+            "At the end, it lowers its paw and returns to the exact same neutral pose as the beginning, "
+            "sitting calmly with paws together.",
+            6
+        ),
+        "nod": (
+            f"{_CAT_CHARACTER}. The cat simply nods slowly and clearly, chin moving downward toward the chest. "
+            "Eyes half-closed with a warm agreeing smile. Only the head moves, body stays perfectly still "
+            "in seated position. Both paws rest neatly in front. "
+            "No dramatic movement, no body swaying. A gentle, single, clear nod. Subtle and graceful. "
+            "At the end, it stops nodding and returns to the exact same neutral pose as the beginning, "
+            "with its head level and a calm expression.",
+            6
+        ),
+        "think": (
+            f"{_CAT_CHARACTER}. The cat raises one paw to its chin in a classic thinking pose, "
+            "looking upward at the starry sky with a contemplative expression. "
+            "Eyes gazing up and to the side, eyebrows slightly furrowed in concentration. "
+            "The constellation patterns on the fur glow slightly brighter. "
+            "Mouth in a small thoughtful pout. Body stays still in seated position. No extra movements. "
+            "Only the paw-on-chin and upward gaze show thinking. "
+            "At the end, it lowers its paw and returns to the exact same neutral pose as the beginning, "
+            "looking straight at the camera with a calm expression.",
+            6
+        ),
+        "sneeze": (
+            f"{_CAT_CHARACTER}. The cat squeezes its eyes tightly shut with nose scrunched up, "
+            "head tilting back slightly in a sneeze. "
+            "Tiny glowing star particles burst from the nose like magical sparkles. "
+            "Both paws clutch the front of the hoodie. Constellation patterns on fur flicker. "
+            "A cute involuntary expression. No body shifting from seated position. "
+            "At the end, it returns to the exact same neutral pose as the beginning, "
+            "sitting calmly with a gentle smile.",
+            6
+        ),
+        "shy": (
+            f"{_CAT_CHARACTER}. The cat covers its face with both paws in a bashful shy pose, "
+            "peeking through the gap between paws with one eye visible. Ears flattened back slightly. "
+            "Tail curls tightly around the body. A soft blush glow appears on cheeks. "
+            "Body stays in seated position on rooftop. No standing, no body shifting. "
+            "Only the paws covering face and peeking eye show shyness. "
+            "At the end, it lowers its paws and returns to the exact same neutral pose as the beginning, "
+            "sitting calmly with a gentle smile.",
+            6
+        ),
+        "tail_wag": (
+            f"{_CAT_CHARACTER}. The cat looks back over its shoulder at its own fluffy tail, "
+            "which is raised high and swishing to one side. "
+            "The tail tip glows intensely with star particles trailing like a small comet. "
+            "The cat has a playful surprised expression, one paw reaching back toward the glowing tail. "
+            "Body stays seated on rooftop, only the head turns back and one paw reaches. "
+            "No standing, no jumping. "
+            "At the end, it turns back forward and returns to the exact same neutral pose as the beginning, "
+            "sitting calmly facing the camera.",
+            6
+        ),
+    },
+}
+
+
+# ============================================================
+# 图片处理
+# ============================================================
+
+def convert_png_to_jpg(png_path: str) -> str:
+    """将 PNG (可能含 RGBA 透明通道) 转为 JPG，返回 JPG 路径"""
+    jpg_path = png_path.rsplit('.', 1)[0] + '.jpg'
+    if os.path.exists(jpg_path):
+        print(f"✓ JPG 已存在: {jpg_path}")
+        return jpg_path
+
+    print(f"转换 PNG → JPG: {png_path}")
+    img = Image.open(png_path)
+    if img.mode == 'RGBA':
+        bg = Image.new('RGB', img.size, (0, 0, 0))  # 黑色背景（夜景）
+        bg.paste(img, mask=img.split()[3])
+        img = bg
+    elif img.mode != 'RGB':
+        img = img.convert('RGB')
+    img.save(jpg_path, quality=95)
+    print(f"✓ 转换完成: {jpg_path}")
+    return jpg_path
 
 
 def check_and_crop_image(image_path: str, backup: bool = True) -> tuple:
@@ -180,6 +325,10 @@ def load_image_as_bytes(image_path: str) -> tuple:
     return image_data, mime_type
 
 
+# ============================================================
+# Veo 视频生成
+# ============================================================
+
 def wait_for_video(video_client, operation) -> any:
     """等待视频生成完成"""
     print("    等待视频生成...")
@@ -200,14 +349,15 @@ def wait_for_video(video_client, operation) -> any:
     return response.generated_videos[0]
 
 
-def generate_video(video_client, action: str, prompt: str, duration: int) -> str:
+def generate_video(video_client, action: str, prompt: str, duration: int,
+                   idle_image: str, assets_dir: str) -> str:
     """使用 Veo API 的 image_to_video 方法生成视频"""
     print(f"\n[{action}] 开始生成视频...")
     print(f"  时长: {duration}秒")
-    print(f"  起始帧: {IDLE_IMAGE}")
+    print(f"  起始帧: {idle_image}")
 
     try:
-        image_data, mime_type = load_image_as_bytes(IDLE_IMAGE)
+        image_data, mime_type = load_image_as_bytes(idle_image)
         start_image = types.Image(image_bytes=image_data, mime_type=mime_type)
 
         config = types.GenerateVideosConfig(
@@ -229,7 +379,7 @@ def generate_video(video_client, action: str, prompt: str, duration: int) -> str
             print("  错误: 视频生成失败")
             return None
 
-        output_path = os.path.join(ASSETS_DIR, f"{action}.mp4")
+        output_path = os.path.join(assets_dir, f"{action}.mp4")
         video_client.files.download(file=video.video)
         video.video.save(output_path)
         print(f"  成功! 保存到: {output_path}")
@@ -240,55 +390,114 @@ def generate_video(video_client, action: str, prompt: str, duration: int) -> str
         return None
 
 
+# ============================================================
+# 主函数
+# ============================================================
+
 def main():
-    parser = argparse.ArgumentParser(description='使用 Google Veo API 生成狐小狸数字人视频')
-    parser.add_argument('--api-key', '-k', required=True, help='Google AI API Key')
+    parser = argparse.ArgumentParser(
+        description='使用 Google Veo API 为数字人角色生成动作视频',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"可用角色: {', '.join(CHARACTERS.keys())}"
+    )
+    parser.add_argument('--api-key', '-k', nargs='+', help='Google AI API Key（可提供多个，轮换使用避免配额限制）')
+    parser.add_argument('--character', '-c', default='fox-xiaoli',
+                        help=f'角色 ID (默认: fox-xiaoli, 可选: {", ".join(CHARACTERS.keys())})')
     parser.add_argument('--action', '-a', help='只生成指定动作的视频')
     parser.add_argument('--list', '-l', action='store_true', help='列出所有可用动作')
     parser.add_argument('--no-crop', action='store_true', help='跳过图片裁剪检查')
 
     args = parser.parse_args()
 
+    # 验证角色
+    if args.character not in CHARACTERS:
+        print(f"错误: 未知角色 '{args.character}'")
+        print(f"可用角色: {', '.join(CHARACTERS.keys())}")
+        return
+
+    char_config = CHARACTERS[args.character]
+    char_name = char_config["name"]
+    char_emoji = char_config["emoji"]
+    videos = char_config["videos"]
+
+    # 角色资源目录
+    assets_dir = os.path.join(CHARACTERS_DIR, args.character, "assets")
+
     if args.list:
-        print("可用动作:")
-        for action, (prompt, duration) in VIDEOS.items():
+        print(f"{char_emoji} {char_name} 可用动作:")
+        for action, (prompt, duration) in videos.items():
             print(f"  - {action} ({duration}秒)")
         return
 
-    if not os.path.exists(IDLE_IMAGE):
-        print(f"错误: 静态图不存在: {IDLE_IMAGE}")
+    if not args.api_key:
+        parser.error("--api-key / -k 参数是必须的（可提供多个 key 轮换使用）")
+
+    api_keys = args.api_key
+    current_key_index = [0]  # 用 list 以便在闭包中修改
+
+    def get_video_client():
+        """获取当前 API Key 的 client"""
+        return genai.Client(
+            http_options={"api_version": "v1beta"},
+            api_key=api_keys[current_key_index[0]],
+        )
+
+    def rotate_key():
+        """切换到下一个 API Key"""
+        if len(api_keys) > 1:
+            old_idx = current_key_index[0]
+            current_key_index[0] = (current_key_index[0] + 1) % len(api_keys)
+            print(f"  🔑 切换 API Key: #{old_idx + 1} → #{current_key_index[0] + 1}")
+            return True
+        return False
+
+    # 查找 idle 图片（支持 jpg 和 png）
+    idle_jpg = os.path.join(assets_dir, "idle.jpg")
+    idle_png = os.path.join(assets_dir, "idle.png")
+
+    if os.path.exists(idle_jpg):
+        idle_image = idle_jpg
+    elif os.path.exists(idle_png):
+        # PNG → JPG 转换（处理 RGBA 透明通道）
+        print("=" * 50)
+        print("检测到 PNG 格式，转换为 JPG...")
+        print("=" * 50)
+        idle_image = convert_png_to_jpg(idle_png)
+        print()
+    else:
+        print(f"错误: 静态图不存在")
+        print(f"  请将 idle 图片放到: {assets_dir}/idle.jpg 或 idle.png")
         return
 
+    # 裁剪检查
     if not args.no_crop:
         print("=" * 50)
         print("检查图片尺寸...")
         print("=" * 50)
-        success, message = check_and_crop_image(IDLE_IMAGE)
+        success, message = check_and_crop_image(idle_image)
         if not success:
             print(f"\n❌ 错误: {message}")
             return
         print()
 
-    video_client = genai.Client(
-        http_options={"api_version": "v1beta"},
-        api_key=args.api_key,
-    )
-
+    # 选择要生成的动作
     if args.action:
-        if args.action not in VIDEOS:
+        if args.action not in videos:
             print(f"错误: 未知动作 '{args.action}'")
-            print(f"可用动作: {', '.join(VIDEOS.keys())}")
+            print(f"可用动作: {', '.join(videos.keys())}")
             return
-        videos_to_generate = {args.action: VIDEOS[args.action]}
+        videos_to_generate = {args.action: videos[args.action]}
     else:
-        videos_to_generate = VIDEOS
+        videos_to_generate = videos
 
     print("=" * 50)
-    print("🦊 狐小狸 - Veo 视频生成器")
+    print(f"{char_emoji} {char_name} - Veo 视频生成器")
     print("=" * 50)
+    print(f"角色: {char_name} ({args.character})")
     print(f"模型: {VIDEO_MODEL}")
-    print(f"静态图: {IDLE_IMAGE}")
-    print(f"输出目录: {ASSETS_DIR}")
+    print(f"静态图: {idle_image}")
+    print(f"输出目录: {assets_dir}")
+    print(f"API Keys: {len(api_keys)} 个")
     print(f"待生成视频: {len(videos_to_generate)} 个")
     print("=" * 50)
 
@@ -296,10 +505,28 @@ def main():
     fail_count = 0
 
     for action, (prompt, duration) in videos_to_generate.items():
-        result = generate_video(video_client, action, prompt, duration)
-        if result:
-            success_count += 1
+        # 尝试生成，遇到 429 则切换 key 重试
+        max_retries = len(api_keys)
+        for attempt in range(max_retries):
+            video_client = get_video_client()
+            result = generate_video(video_client, action, prompt, duration,
+                                    idle_image, assets_dir)
+            if result:
+                success_count += 1
+                # 每次成功后也轮换 key，均匀分配配额
+                if len(api_keys) > 1:
+                    rotate_key()
+                break
+            elif result is None:
+                # 检查是否是配额问题，尝试切换 key
+                if rotate_key():
+                    print(f"  重试 [{action}]...")
+                    continue
+                else:
+                    fail_count += 1
+                    break
         else:
+            print(f"  所有 API Key 均已耗尽，跳过 [{action}]")
             fail_count += 1
 
     print("\n" + "=" * 50)
