@@ -1,0 +1,27 @@
+# Video/image assets (too large for git, generate locally)
+characters/*/assets/*.mp4
+characters/*/assets/*.jpg
+characters/*/assets/*.png
+
+# Backup files
+*_original.jpg
+*_original.png
+
+# Generated images
+Gemini_Generated_Image_*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Environment / API Keys
+.env
+.env.local

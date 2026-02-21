@@ -1,0 +1,28 @@
+{
+  "id": "fox-xiaoli",
+  "name": "狐小狸",
+  "subtitle": "Fox Xiaoli - Interactive Digital Avatar",
+  "dbName": "companion-fox-xiaoli",
+  "defaultVoice": "Puck",
+  "theme": {
+    "background": "linear-gradient(135deg, #2d4a1e 0%, #4a7c34 50%, #2d4a1e 100%)",
+    "accent": "#e88533",
+    "accentDark": "#d4691a",
+    "fun": "#e85c8a",
+    "funDark": "#c44673"
+  },
+  "actions": {
+    "basic": [
+      { "id": "speaking",  "emoji": "🗣", "label": "说话",   "status": "狐小狸在说话..." },
+      { "id": "listening", "emoji": "👂", "label": "倾听",   "status": "狐小狸在认真听..." },
+      { "id": "wave",      "emoji": "🐾", "label": "挥爪",   "status": "狐小狸挥挥爪~" },
+      { "id": "nod",       "emoji": "😊", "label": "点头",   "status": "狐小狸点点头~" },
+      { "id": "think",     "emoji": "🤔", "label": "思考",   "status": "狐小狸在思考..." }
+    ],
+    "fun": [
+      { "id": "sneeze",   "emoji": "👃", "label": "点鼻子", "status": "阿嚏！好痒~" },
+      { "id": "shy",      "emoji": "🫣", "label": "挠肚皮", "status": "呀...好害羞 >.<" },
+      { "id": "tail_wag", "emoji": "🦊", "label": "摸尾巴", "status": "尾巴摇摇摇~" }
+    ]
+  }
+}

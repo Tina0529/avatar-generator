@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Avatar</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #fff;
+      margin-bottom: 6px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    .avatar-container {
+      width: 360px;
+      height: 640px;
+      background: #000;
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+      transition: box-shadow 0.3s;
+    }
+
+    .avatar-container.voice-active {
+      box-shadow: 0 0 0 3px rgba(232,133,51,0.6), 0 10px 40px rgba(0,0,0,0.4);
+      animation: voice-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes voice-pulse {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(232,133,51,0.4), 0 10px 40px rgba(0,0,0,0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(232,133,51,0.6), 0 10px 40px rgba(0,0,0,0.4); }
+    }
+
+    .avatar-container img,
+    .avatar-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #idle-image { z-index: 1; }
+    #idle-video {
+      z-index: 2;
+      opacity: 0;
+      transition: opacity 0.35s ease-in-out;
+    }
+    #action-video {
+      z-index: 3;
+      opacity: 0;
+      transition: opacity 0.35s ease-in-out;
+    }
+    #idle-video.visible { opacity: 1; }
+    #action-video.visible { opacity: 1; }
+
+    .voice-section {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .voice-btn {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s;
+      color: white;
+      box-shadow: 0 4px 20px rgba(232,133,51,0.4);
+    }
+
+    .voice-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 25px rgba(232,133,51,0.5);
+    }
+
+    .voice-btn.active {
+      background: linear-gradient(135deg, #e85c5c 0%, #c44646 100%) !important;
+      box-shadow: 0 4px 20px rgba(232,92,92,0.5);
+      animation: mic-pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes mic-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    .voice-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      animation: none;
+    }
+
+    .voice-status {
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    .action-section {
+      margin-top: 24px;
+      max-width: 420px;
+      width: 100%;
+    }
+
+    .section-label {
+      color: rgba(255,255,255,0.6);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      padding-left: 4px;
+    }
+
+    .action-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .action-btn {
+      padding: 12px 22px;
+      font-size: 15px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: white;
+      font-weight: 500;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .action-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .action-btn:active { transform: translateY(0); }
+    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .settings-toggle {
+      margin-top: 16px;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.4);
+      cursor: pointer;
+      font-size: 13px;
+      transition: color 0.2s;
+    }
+    .settings-toggle:hover { color: rgba(255,255,255,0.7); }
+
+    .settings-panel {
+      margin-top: 8px;
+      max-width: 420px;
+      width: 100%;
+      display: none;
+    }
+    .settings-panel.open { display: block; }
+
+    .settings-panel label {
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .settings-panel input, .settings-panel select {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.3);
+      color: #fff;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .status {
+      color: rgba(255,255,255,0.7);
+      margin-top: 16px;
+      font-size: 14px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="char-name">Loading...</h1>
+  <p class="subtitle" id="char-subtitle"></p>
+
+  <div class="avatar-container" id="avatar-container">
+    <img id="idle-image" alt="Avatar" />
+    <video id="idle-video" playsinline muted loop></video>
+    <video id="action-video" playsinline muted></video>
+  </div>
+
+  <div class="voice-section">
+    <button class="voice-btn" id="voice-btn" title="开始语音对话">🎤</button>
+    <p class="voice-status" id="voice-status">点击麦克风开始语音对话</p>
+  </div>
+
+  <div class="action-section" id="basic-section">
+    <div class="section-label">基础动作</div>
+    <div class="action-buttons" id="basic-buttons"></div>
+  </div>
+
+  <div class="action-section" id="fun-section">
+    <div class="section-label">趣味互动</div>
+    <div class="action-buttons" id="fun-buttons"></div>
+  </div>
+
+  <p class="status" id="status">加载中...</p>
+
+  <!-- 调试面板 -->
+  <button class="settings-toggle" id="debug-toggle">🔍 记忆调试</button>
+  <div class="settings-panel" id="debug-panel">
+    <div id="debug-output" style="background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:12px;padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
+    <div style="margin-top:8px;display:flex;gap:8px;">
+      <button id="debug-refresh" style="padding:6px 12px;border:none;border-radius:6px;background:#4a7c34;color:#fff;cursor:pointer;font-size:12px;">🔄 刷新</button>
+      <button id="debug-clear" style="padding:6px 12px;border:none;border-radius:6px;background:#c44646;color:#fff;cursor:pointer;font-size:12px;">🗑 清除全部记忆</button>
+    </div>
+  </div>
+
+  <!-- 设置 -->
+  <button class="settings-toggle" id="settings-toggle">⚙️ 设置</button>
+  <div class="settings-panel" id="settings-panel">
+    <label>Gemini API Key</label>
+    <input type="password" id="api-key-input" placeholder="输入你的 Gemini API Key" />
+    <label>语音音色</label>
+    <select id="voice-select">
+      <option value="Puck">Puck（俏皮活泼）</option>
+      <option value="Leda">Leda（年轻可爱）</option>
+      <option value="Fenrir">Fenrir（兴奋活力）</option>
+      <option value="Aoede">Aoede（轻盈清新）</option>
+      <option value="Kore">Kore（清亮坚定）</option>
+      <option value="Achernar">Achernar（柔和温暖）</option>
+    </select>
+  </div>
+
+  <!-- 共享模块 -->
+  <script src="modules/memory-manager.js"></script>
+  <script src="modules/prompt-composer.js"></script>
+  <script src="modules/tool-handler.js"></script>
+
+  <script>
+    // ============================================================
+    // Section 0: 角色配置加载
+    // ============================================================
+
+    // 从 URL 参数获取角色 ID，默认 fox-xiaoli
+    const CHARACTER_ID = new URLSearchParams(location.search).get('c') || 'fox-xiaoli';
+    const CHARACTER_PATH = `characters/${CHARACTER_ID}`;
+
+    let CHARACTER = null; // 角色配置对象
+    let ACTIONS = {};     // action id → video path
+    let ACTION_LABELS = {}; // action id → status label
+
+    async function loadCharacter() {
+      const res = await fetch(`${CHARACTER_PATH}/config.json`);
+      if (!res.ok) throw new Error(`角色 "${CHARACTER_ID}" 不存在`);
+      CHARACTER = await res.json();
+
+      // 设置页面
+      document.title = `${CHARACTER.name} - Digital Avatar`;
+      document.getElementById('char-name').textContent = CHARACTER.name;
+      document.getElementById('char-subtitle').textContent = CHARACTER.subtitle;
+      document.body.style.background = CHARACTER.theme.background;
+
+      // 设置按钮主题色
+      const accent = CHARACTER.theme.accent;
+      const accentDark = CHARACTER.theme.accentDark;
+      document.querySelector('.voice-btn').style.background =
+        `linear-gradient(135deg, ${accent} 0%, ${accentDark} 100%)`;
+
+      // 构建 ACTIONS 和 ACTION_LABELS
+      const allActions = [...CHARACTER.actions.basic, ...CHARACTER.actions.fun];
+      for (const a of allActions) {
+        ACTIONS[a.id] = `${CHARACTER_PATH}/assets/${a.id}.mp4`;
+        ACTION_LABELS[a.id] = a.status;
+      }
+
+      // 渲染动作按钮
+      renderButtons('basic-buttons', CHARACTER.actions.basic, accent, accentDark);
+      renderButtons('fun-buttons', CHARACTER.actions.fun,
+        CHARACTER.theme.fun, CHARACTER.theme.funDark);
+
+      // 设置 idle 素材
+      document.getElementById('idle-image').src = `${CHARACTER_PATH}/assets/idle.jpg`;
+      const idleVideo = document.getElementById('idle-video');
+      idleVideo.src = `${CHARACTER_PATH}/assets/idle.mp4`;
+
+      // 设置默认语音
+      const voiceSelect = document.getElementById('voice-select');
+      voiceSelect.value = localStorage.getItem('gemini_voice') || CHARACTER.defaultVoice;
+
+      // 更新状态文字
+      document.getElementById('status').textContent = `点击按钮和${CHARACTER.name}互动吧~`;
+      document.getElementById('voice-status').textContent = `点击麦克风和${CHARACTER.name}语音对话`;
+    }
+
+    function renderButtons(containerId, actions, bg, bgDark) {
+      const container = document.getElementById(containerId);
+      for (const a of actions) {
+        const btn = document.createElement('button');
+        btn.className = 'action-btn';
+        btn.dataset.action = a.id;
+        btn.style.background = `linear-gradient(135deg, ${bg} 0%, ${bgDark} 100%)`;
+        btn.textContent = `${a.emoji} ${a.label}`;
+        btn.addEventListener('click', () => playManualAction(a.id));
+        container.appendChild(btn);
+      }
+    }
+
+    // ============================================================
+    // Section 1: 常量
+    // ============================================================
+    const FADE_MS = 350;
+    const LOOP_END_THRESHOLD = 0.5;
+    const MAX_WAIT = 3000;
+
+    const GEMINI_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent';
+    const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
+
+    // 模块实例
+    let memoryManager = null;
+    let promptComposer = null;
+    let toolHandler = null;
+
+    // ============================================================
+    // Section 2: DOM 元素
+    // ============================================================
+    const idleVideo      = document.getElementById('idle-video');
+    const actionVideo    = document.getElementById('action-video');
+    const statusEl       = document.getElementById('status');
+    const voiceBtn       = document.getElementById('voice-btn');
+    const voiceStatusEl  = document.getElementById('voice-status');
+    const avatarContainer = document.getElementById('avatar-container');
+    const settingsToggle = document.getElementById('settings-toggle');
+    const settingsPanel  = document.getElementById('settings-panel');
+    const apiKeyInput    = document.getElementById('api-key-input');
+    const voiceSelect    = document.getElementById('voice-select');
+
+    // ============================================================
+    // Section 3: 状态变量
+    // ============================================================
+    let isManualPlaying = false;
+    let pendingAction = null;
+    let waitTimer = null;
+    let isVoiceChatActive = false;
+    let currentAvatarState = 'idle';
+
+    // ============================================================
+    // Section 4: 初始化
+    // ============================================================
+
+    // 加载角色配置后启动
+    loadCharacter().then(() => {
+      idleVideo.addEventListener('canplay', () => {
+        idleVideo.classList.add('visible');
+        idleVideo.play().catch(() => {});
+      }, { once: true });
+      idleVideo.load();
+    }).catch(err => {
+      document.getElementById('status').textContent = `加载角色失败: ${err.message}`;
+    });
+
+    // 恢复设置
+    apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+    apiKeyInput.addEventListener('change', () => {
+      localStorage.setItem('gemini_api_key', apiKeyInput.value);
+    });
+    voiceSelect.addEventListener('change', () => {
+      localStorage.setItem('gemini_voice', voiceSelect.value);
+    });
+
+    settingsToggle.addEventListener('click', () => {
+      settingsPanel.classList.toggle('open');
+    });
+
+    // 调试面板
+    const debugToggle = document.getElementById('debug-toggle');
+    const debugPanel = document.getElementById('debug-panel');
+    const debugOutput = document.getElementById('debug-output');
+
+    debugToggle.addEventListener('click', async () => {
+      debugPanel.classList.toggle('open');
+      if (debugPanel.classList.contains('open')) {
+        await refreshDebugInfo();
+      }
+    });
+
+    document.getElementById('debug-refresh').addEventListener('click', () => {
+      refreshDebugInfo();
+    });
+
+    document.getElementById('debug-clear').addEventListener('click', async () => {
+      const dbName = CHARACTER ? CHARACTER.dbName : 'fox-companion';
+      if (!confirm('确定要清除所有记忆吗？（用户画像、语义记忆、互动日志全部清除）')) return;
+      try {
+        if (memoryManager && memoryManager.db) {
+          memoryManager.db.close();
+          memoryManager = null;
+          promptComposer = null;
+          toolHandler = null;
+        }
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => {
+          debugOutput.textContent = '✅ 记忆已全部清除！下次对话将从零开始。';
+        };
+        req.onerror = () => {
+          debugOutput.textContent = '❌ 清除失败: ' + req.error;
+        };
+      } catch (e) {
+        debugOutput.textContent = '❌ 清除失败: ' + e.message;
+      }
+    });
+
+    async function refreshDebugInfo() {
+      const lines = [];
+      if (!memoryManager) {
+        lines.push('⚠️ MemoryManager 尚未初始化（需要先开启一次语音对话）');
+        debugOutput.textContent = lines.join('\n');
+        return;
+      }
+      try {
+        const profile = await memoryManager.getUserProfile();
+        lines.push('=== 用户画像 (IndexedDB) ===');
+        if (Object.keys(profile).length === 0) {
+          lines.push('  （空 - save_user_profile 工具未被调用过）');
+        } else {
+          for (const [k, v] of Object.entries(profile)) {
+            lines.push(`  ${k}: ${v}`);
+          }
+        }
+        lines.push('\n=== 语义记忆 ===');
+        const stats = await memoryManager.getStats();
+        lines.push(`  总记忆数: ${stats.totalMemories}`);
+        lines.push(`  互动日志: ${stats.totalEpisodes}`);
+        lines.push(`  有画像: ${stats.hasProfile}`);
+        if (stats.byCategory && Object.keys(stats.byCategory).length > 0) {
+          lines.push(`  分类: ${JSON.stringify(stats.byCategory)}`);
+        }
+        const allMemories = await memoryManager.searchMemory('');
+        if (allMemories.length > 0) {
+          lines.push('\n=== 记忆详情 ===');
+          for (const m of allMemories) {
+            const conf = (m.confidence || 1.0).toFixed(2);
+            lines.push(`  [${m.category}] ${m.content} (置信度:${conf})`);
+          }
+        }
+        lines.push('\n=== 提示 ===');
+        lines.push('打开浏览器控制台 (F12/Cmd+Opt+I)');
+        lines.push('搜索 [Tool] 查看 Function Calling 日志');
+      } catch (e) {
+        lines.push(`错误: ${e.message}`);
+      }
+      debugOutput.textContent = lines.join('\n');
+    }
+
+    // ============================================================
+    // Section 5: Avatar 状态控制
+    // ============================================================
+
+    function setAvatarState(newState) {
+      if (newState === currentAvatarState) return;
+      currentAvatarState = newState;
+
+      if (newState === 'idle') {
+        actionVideo.classList.remove('visible');
+        idleVideo.classList.add('visible');
+        actionVideo.loop = false;
+        if (idleVideo.paused) idleVideo.play().catch(() => {});
+        setTimeout(() => { actionVideo.src = ''; }, FADE_MS);
+        statusEl.textContent = isVoiceChatActive
+          ? '语音对话中...'
+          : `点击按钮和${CHARACTER?.name || ''}互动吧~`;
+        return;
+      }
+
+      const videoSrc = ACTIONS[newState];
+      if (!videoSrc) return;
+
+      actionVideo.src = videoSrc;
+      actionVideo.loop = true;
+      actionVideo.muted = true;
+      actionVideo.load();
+
+      statusEl.textContent = ACTION_LABELS[newState] || '';
+
+      const onReady = () => {
+        actionVideo.removeEventListener('canplay', onReady);
+        actionVideo.classList.add('visible');
+        idleVideo.classList.remove('visible');
+        actionVideo.play().catch(() => {});
+      };
+      actionVideo.addEventListener('canplay', onReady);
+    }
+
+    // ============================================================
+    // Section 6: 手动动作系统
+    // ============================================================
+
+    function playManualAction(action) {
+      if (isManualPlaying || isVoiceChatActive) return;
+      const videoSrc = ACTIONS[action];
+      if (!videoSrc) return;
+
+      isManualPlaying = true;
+      pendingAction = action;
+      setButtonsEnabled(false);
+      statusEl.textContent = '准备中...';
+
+      actionVideo.loop = false;
+      actionVideo.muted = true;
+      actionVideo.src = videoSrc;
+      actionVideo.load();
+    }
+
+    actionVideo.addEventListener('canplay', function onManualCanPlay() {
+      if (!pendingAction || isVoiceChatActive) return;
+      const action = pendingAction;
+      pendingAction = null;
+
+      const duration = idleVideo.duration || 6;
+      const currentTime = idleVideo.currentTime || 0;
+      const remaining = (duration - currentTime) * 1000;
+
+      if (remaining < LOOP_END_THRESHOLD * 1000 || remaining > MAX_WAIT) {
+        executeManualCrossfade(action);
+      } else {
+        statusEl.textContent = '准备中...';
+        waitTimer = setTimeout(() => {
+          executeManualCrossfade(action);
+        }, remaining - LOOP_END_THRESHOLD * 1000);
+      }
+    });
+
+    function executeManualCrossfade(action) {
+      waitTimer = null;
+      actionVideo.classList.add('visible');
+      idleVideo.classList.remove('visible');
+      statusEl.textContent = ACTION_LABELS[action] || '正在播放...';
+      setTimeout(() => {
+        actionVideo.play().catch(err => {
+          console.error('播放失败:', err);
+          resetToIdle();
+        });
+      }, FADE_MS * 0.5);
+    }
+
+    actionVideo.addEventListener('ended', () => {
+      if (actionVideo.loop) return;
+      if (idleVideo.paused) idleVideo.play().catch(() => {});
+      actionVideo.classList.remove('visible');
+      idleVideo.classList.add('visible');
+      setTimeout(() => {
+        actionVideo.src = '';
+        isManualPlaying = false;
+        setButtonsEnabled(true);
+        statusEl.textContent = `点击按钮和${CHARACTER?.name || ''}互动吧~`;
+      }, FADE_MS);
+    });
+
+    actionVideo.addEventListener('error', () => {
+      if (isVoiceChatActive) return;
+      console.error('视频加载失败');
+      statusEl.textContent = '视频加载失败，请先生成视频素材';
+      resetToIdle();
+    });
+
+    function resetToIdle() {
+      if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
+      actionVideo.classList.remove('visible');
+      actionVideo.src = '';
+      actionVideo.loop = false;
+      pendingAction = null;
+      isManualPlaying = false;
+      currentAvatarState = 'idle';
+      setButtonsEnabled(!isVoiceChatActive);
+      statusEl.textContent = isVoiceChatActive
+        ? '语音对话中...'
+        : `点击按钮和${CHARACTER?.name || ''}互动吧~`;
+      if (idleVideo.paused) idleVideo.play().catch(() => {});
+      idleVideo.classList.add('visible');
+    }
+
+    function setButtonsEnabled(enabled) {
+      document.querySelectorAll('.action-btn').forEach(btn => { btn.disabled = !enabled; });
+    }
+
+    // ============================================================
+    // Section 7: 音频播放器
+    // ============================================================
+
+    class AudioStreamer {
+      constructor(sampleRate = 24000) {
+        this.sampleRate = sampleRate;
+        this.context = null;
+        this.gainNode = null;
+        this.scheduledTime = 0;
+        this.sources = [];
+        this._checkTimer = null;
+      }
+
+      _ensureContext() {
+        if (!this.context || this.context.state === 'closed') {
+          this.context = new AudioContext({ sampleRate: this.sampleRate });
+          this.gainNode = this.context.createGain();
+          this.gainNode.connect(this.context.destination);
+          this.scheduledTime = 0;
+        }
+        if (this.context.state === 'suspended') this.context.resume();
+      }
+
+      addPCM16(base64Data) {
+        this._ensureContext();
+        const raw = atob(base64Data);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        const int16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+
+        const buffer = this.context.createBuffer(1, float32.length, this.sampleRate);
+        buffer.getChannelData(0).set(float32);
+        const source = this.context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.gainNode);
+
+        const now = this.context.currentTime;
+        const startAt = Math.max(now + 0.02, this.scheduledTime);
+        source.start(startAt);
+        this.scheduledTime = startAt + buffer.duration;
+        this.sources.push(source);
+        source.onended = () => {
+          this.sources = this.sources.filter(s => s !== source);
+        };
+      }
+
+      get isPlaying() {
+        return this.context && this.scheduledTime > this.context.currentTime;
+      }
+
+      stop() {
+        if (this._checkTimer) { clearInterval(this._checkTimer); this._checkTimer = null; }
+        this.sources.forEach(s => { try { s.stop(); } catch(e) {} });
+        this.sources = [];
+        if (this.gainNode) {
+          this.gainNode.disconnect();
+          this.gainNode = this.context.createGain();
+          this.gainNode.connect(this.context.destination);
+        }
+        this.scheduledTime = 0;
+      }
+
+      waitForEnd(callback) {
+        if (this._checkTimer) clearInterval(this._checkTimer);
+        this._checkTimer = setInterval(() => {
+          if (!this.isPlaying) {
+            clearInterval(this._checkTimer);
+            this._checkTimer = null;
+            callback();
+          }
+        }, 100);
+      }
+    }
+
+    // ============================================================
+    // Section 8: 麦克风录音器
+    // ============================================================
+
+    class MicRecorder {
+      constructor(onChunk) {
+        this.onChunk = onChunk;
+        this.stream = null;
+        this.audioContext = null;
+        this.processor = null;
+        this.analyser = null;
+        this.levelData = null;
+      }
+
+      async start() {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, sampleRate: 16000, echoCancellation: true,
+                   noiseSuppression: true, autoGainControl: true }
+        });
+        this.audioContext = new AudioContext({ sampleRate: 16000 });
+        const source = this.audioContext.createMediaStreamSource(this.stream);
+        this.analyser = this.audioContext.createAnalyser();
+        this.analyser.fftSize = 512;
+        this.levelData = new Uint8Array(this.analyser.frequencyBinCount);
+        source.connect(this.analyser);
+
+        await this.audioContext.audioWorklet.addModule('audio-processor.js');
+        this.processor = new AudioWorkletNode(this.audioContext, 'audio-recorder-worklet');
+        this.processor.port.onmessage = (event) => {
+          if (event.data.event === 'chunk') {
+            this.onChunk(this._arrayBufferToBase64(event.data.data));
+          }
+        };
+        source.connect(this.processor);
+      }
+
+      getLevel() {
+        if (!this.analyser || !this.levelData) return 0;
+        this.analyser.getByteFrequencyData(this.levelData);
+        return this.levelData.reduce((a, b) => a + b, 0) / this.levelData.length;
+      }
+
+      stop() {
+        if (this.processor) this.processor.disconnect();
+        if (this.audioContext) this.audioContext.close().catch(() => {});
+        if (this.stream) this.stream.getTracks().forEach(t => t.stop());
+        this.processor = null; this.audioContext = null; this.stream = null;
+      }
+
+      _arrayBufferToBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      }
+    }
+
+    // ============================================================
+    // Section 9: Gemini Live WebSocket 客户端
+    // ============================================================
+
+    class GeminiLiveClient {
+      constructor(apiKey, voice, systemPrompt, functionDeclarations) {
+        this.apiKey = apiKey;
+        this.voice = voice;
+        this.systemPrompt = systemPrompt;
+        this.functionDeclarations = functionDeclarations || [];
+        this.ws = null;
+        this.onAudio = null;
+        this.onTurnComplete = null;
+        this.onInterrupted = null;
+        this.onToolCall = null;
+        this.onError = null;
+        this.onClose = null;
+      }
+
+      connect() {
+        return new Promise((resolve, reject) => {
+          const url = `${GEMINI_WS_URL}?key=${this.apiKey}`;
+          this.ws = new WebSocket(url);
+          const timeout = setTimeout(() => reject(new Error('连接超时')), 15000);
+
+          this.ws.onopen = () => {
+            const setupMsg = {
+              setup: {
+                model: GEMINI_MODEL,
+                generationConfig: {
+                  responseModalities: ['AUDIO'],
+                  speechConfig: {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: this.voice } }
+                  }
+                },
+                systemInstruction: { parts: [{ text: this.systemPrompt }] }
+              }
+            };
+            if (this.functionDeclarations.length > 0) {
+              setupMsg.setup.tools = [{ functionDeclarations: this.functionDeclarations }];
+            }
+            this.ws.send(JSON.stringify(setupMsg));
+          };
+
+          this.ws.onmessage = async (event) => {
+            try {
+              const text = typeof event.data === 'string' ? event.data : await event.data.text();
+              const response = JSON.parse(text);
+
+              if (response.setupComplete) { clearTimeout(timeout); resolve(); return; }
+
+              if (response.toolCall) {
+                console.log('[Gemini] 收到 toolCall:', JSON.stringify(response.toolCall).substring(0, 500));
+                if (this.onToolCall) this.onToolCall(response.toolCall);
+                return;
+              }
+
+              if (!response.serverContent?.modelTurn?.parts?.some(p => p.inlineData)) {
+                console.log('[Gemini] 非音频响应:', JSON.stringify(response).substring(0, 300));
+              }
+
+              if (response.serverContent) {
+                const sc = response.serverContent;
+                if (sc.interrupted) { if (this.onInterrupted) this.onInterrupted(); return; }
+                if (sc.modelTurn) {
+                  for (const part of (sc.modelTurn.parts || [])) {
+                    if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
+                      if (this.onAudio) this.onAudio(part.inlineData.data);
+                    }
+                  }
+                }
+                if (sc.turnComplete) { if (this.onTurnComplete) this.onTurnComplete(); }
+              }
+            } catch (e) { console.error('解析消息失败:', e); }
+          };
+
+          this.ws.onerror = (err) => { clearTimeout(timeout); reject(err); if (this.onError) this.onError(err); };
+          this.ws.onclose = () => { if (this.onClose) this.onClose(); };
+        });
+      }
+
+      sendAudio(base64Data) {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({
+            realtimeInput: { mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: base64Data }] }
+          }));
+        }
+      }
+
+      sendToolResponse(functionResponses) {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ toolResponse: { functionResponses } }));
+        }
+      }
+
+      disconnect() { if (this.ws) { this.ws.close(); this.ws = null; } }
+    }
+
+    // ============================================================
+    // Section 10: 语音对话控制器
+    // ============================================================
+
+    let geminiClient = null;
+    let micRecorder = null;
+    let audioStreamer = null;
+    let vadTimer = null;
+    let userSpeaking = false;
+    let modelSpeaking = false;
+    let silenceStart = 0;
+
+    const VAD_THRESHOLD = 12;
+    const SILENCE_DELAY = 600;
+    const THINK_DELAY = 300;
+
+    voiceBtn.addEventListener('click', () => {
+      if (isVoiceChatActive) stopVoiceChat(); else startVoiceChat();
+    });
+
+    async function startVoiceChat() {
+      const apiKey = apiKeyInput.value.trim();
+      if (!apiKey) {
+        settingsPanel.classList.add('open');
+        apiKeyInput.focus();
+        voiceStatusEl.textContent = '请先输入 Gemini API Key';
+        return;
+      }
+      localStorage.setItem('gemini_api_key', apiKey);
+
+      voiceBtn.disabled = true;
+      voiceStatusEl.textContent = '初始化记忆系统...';
+
+      try {
+        // 初始化模块（使用角色专属的 DB 名）
+        if (!memoryManager) {
+          memoryManager = new MemoryManager(CHARACTER.dbName);
+          await memoryManager.init();
+          memoryManager.runMaintenance().catch(e => {
+            console.warn('[Memory] 维护失败:', e);
+          });
+        }
+        if (!promptComposer) {
+          promptComposer = new PromptComposer(memoryManager);
+          await promptComposer.loadSoul(`${CHARACTER_PATH}/SOUL.md`);
+        }
+        if (!toolHandler) {
+          toolHandler = new ToolHandler(memoryManager);
+        }
+
+        voiceStatusEl.textContent = '组合人设记忆...';
+        const systemPrompt = await promptComposer.compose();
+        const functionDeclarations = toolHandler.getFunctionDeclarations();
+        console.log('[Soul] System prompt 长度:', systemPrompt.length);
+        console.log('[Tools] 工具数量:', functionDeclarations.length);
+
+        voiceStatusEl.textContent = '连接中...';
+        const voice = voiceSelect.value;
+        geminiClient = new GeminiLiveClient(apiKey, voice, systemPrompt, functionDeclarations);
+
+        geminiClient.onAudio = (base64) => {
+          if (!modelSpeaking) { modelSpeaking = true; setAvatarState('speaking'); }
+          audioStreamer.addPCM16(base64);
+        };
+        geminiClient.onTurnComplete = () => {
+          audioStreamer.waitForEnd(() => { modelSpeaking = false; setAvatarState('idle'); });
+        };
+        geminiClient.onInterrupted = () => {
+          audioStreamer.stop(); modelSpeaking = false; setAvatarState('listening');
+        };
+        geminiClient.onClose = () => {
+          if (isVoiceChatActive) { voiceStatusEl.textContent = '连接已断开'; stopVoiceChat(); }
+        };
+
+        geminiClient.onToolCall = async (toolCall) => {
+          const functionCalls = toolCall.functionCalls || [];
+          const functionResponses = [];
+          for (const call of functionCalls) {
+            console.log(`[Tool] 调用: ${call.name}`, call.args);
+            const result = await toolHandler.execute(call.name, call.args || {});
+            console.log(`[Tool] 结果:`, result);
+            functionResponses.push({ response: result, id: call.id });
+          }
+          geminiClient.sendToolResponse(functionResponses);
+        };
+
+        await geminiClient.connect();
+        audioStreamer = new AudioStreamer(24000);
+        micRecorder = new MicRecorder((chunk) => geminiClient.sendAudio(chunk));
+        await micRecorder.start();
+
+        isVoiceChatActive = true;
+        voiceBtn.disabled = false;
+        voiceBtn.classList.add('active');
+        voiceBtn.textContent = '⏹';
+        voiceBtn.title = '结束对话';
+        avatarContainer.classList.add('voice-active');
+        setButtonsEnabled(false);
+        settingsPanel.classList.remove('open');
+        voiceStatusEl.textContent = '语音对话中 - 请开始说话~';
+        statusEl.textContent = '语音对话中...';
+        startVAD();
+
+      } catch (err) {
+        console.error('语音对话启动失败:', err);
+        voiceStatusEl.textContent = `启动失败: ${err.message || '请检查 API Key'}`;
+        voiceBtn.disabled = false;
+        cleanup();
+      }
+    }
+
+    function stopVoiceChat() {
+      isVoiceChatActive = false;
+      cleanup();
+      voiceBtn.classList.remove('active');
+      voiceBtn.textContent = '🎤';
+      voiceBtn.title = '开始语音对话';
+      voiceBtn.disabled = false;
+      avatarContainer.classList.remove('voice-active');
+      voiceStatusEl.textContent = `点击麦克风和${CHARACTER?.name || ''}语音对话`;
+      resetToIdle();
+      setButtonsEnabled(true);
+
+      if (memoryManager) {
+        memoryManager.saveEpisode('进行了一次语音对话').catch(e => {
+          console.warn('保存互动日志失败:', e);
+        });
+      }
+    }
+
+    function cleanup() {
+      stopVAD();
+      if (audioStreamer) { audioStreamer.stop(); audioStreamer = null; }
+      if (micRecorder) { micRecorder.stop(); micRecorder = null; }
+      if (geminiClient) { geminiClient.disconnect(); geminiClient = null; }
+      userSpeaking = false; modelSpeaking = false;
+    }
+
+    // ============================================================
+    // Section 11: 语音活动检测 (VAD)
+    // ============================================================
+
+    function startVAD() {
+      let thinkTimer = null;
+      vadTimer = setInterval(() => {
+        if (!micRecorder || !isVoiceChatActive) return;
+        const level = micRecorder.getLevel();
+
+        if (level > VAD_THRESHOLD) {
+          if (!userSpeaking) {
+            userSpeaking = true;
+            if (thinkTimer) { clearTimeout(thinkTimer); thinkTimer = null; }
+            if (!modelSpeaking) setAvatarState('listening');
+          }
+          silenceStart = 0;
+        } else if (userSpeaking) {
+          if (!silenceStart) silenceStart = Date.now();
+          if (Date.now() - silenceStart > SILENCE_DELAY) {
+            userSpeaking = false;
+            silenceStart = 0;
+            if (!modelSpeaking) {
+              thinkTimer = setTimeout(() => {
+                if (!modelSpeaking && !userSpeaking && isVoiceChatActive) setAvatarState('think');
+              }, THINK_DELAY);
+            }
+          }
+        }
+      }, 50);
+    }
+
+    function stopVAD() {
+      if (vadTimer) { clearInterval(vadTimer); vadTimer = null; }
+    }
+  </script>
+</body>
+</html>
