@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>GLM-Realtime 语音测试</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f0f1a; color: #e0e0f0; padding: 24px; min-height: 100vh; }
+    h1 { font-size: 20px; margin-bottom: 20px; color: #a78bfa; }
+    .card { background: #1a1a2e; border: 1px solid #2d2d4e; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    label { font-size: 13px; color: #888; display: block; margin-bottom: 6px; }
+    input[type=text] { width: 100%; background: #0f0f1a; border: 1px solid #3d3d5e; color: #e0e0f0; padding: 10px 14px; border-radius: 8px; font-size: 14px; font-family: monospace; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    button { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+    #btnConnect { background: #7c3aed; color: white; }
+    #btnConnect:hover { background: #6d28d9; }
+    #btnConnect.connected { background: #059669; }
+    #btnConnect.connected:hover { background: #047857; }
+    #btnMic { background: #1e40af; color: white; min-width: 120px; }
+    #btnMic.active { background: #dc2626; animation: pulse 1s infinite; }
+    #btnMic:disabled { opacity: 0.4; cursor: not-allowed; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.7; } }
+    .status { font-size: 13px; padding: 8px 12px; border-radius: 6px; background: #1e1e3a; margin-top: 10px; }
+    .status.ok { color: #34d399; }
+    .status.err { color: #f87171; }
+    .status.info { color: #93c5fd; }
+    #transcript { background: #0a0a1a; border: 1px solid #2d2d4e; border-radius: 8px; padding: 14px; min-height: 200px; max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
+    .msg-user { color: #93c5fd; margin-bottom: 8px; }
+    .msg-user::before { content: '你: '; color: #60a5fa; font-weight: 600; }
+    .msg-ai { color: #c4b5fd; margin-bottom: 8px; }
+    .msg-ai::before { content: '🦊 GLM: '; color: #a78bfa; font-weight: 600; }
+    .msg-sys { color: #6b7280; font-size: 12px; margin-bottom: 4px; font-style: italic; }
+    select { background: #0f0f1a; border: 1px solid #3d3d5e; color: #e0e0f0; padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<h1>🎤 GLM-Realtime 语音测试</h1>
+
+<div class="card">
+  <label>API Key（格式：id.secret）</label>
+  <input type="text" id="apiKey" placeholder="xxxxxxxx.Xxxxxxxx" autocomplete="off">
+
+  <div class="row">
+    <div>
+      <label style="margin-bottom:4px">认证方式</label>
+      <select id="authMode">
+        <option value="raw">直接 API Key（简单）</option>
+        <option value="jwt">JWT Token（标准）</option>
+      </select>
+    </div>
+    <div>
+      <label style="margin-bottom:4px">区域端点</label>
+      <select id="region">
+        <option value="wss://api.z.ai/api/paas/v4/realtime">🌏 国际版 z.ai（海外推荐）</option>
+        <option value="wss://open.bigmodel.cn/api/paas/v4/realtime">🇨🇳 国内版 bigmodel.cn</option>
+      </select>
+    </div>
+    <div>
+      <label style="margin-bottom:4px">模型</label>
+      <select id="model">
+        <option value="glm-realtime-flash">GLM-Realtime-Flash（便宜）</option>
+        <option value="glm-realtime-air">GLM-Realtime-Air（贵一点）</option>
+      </select>
+    </div>
+    <div>
+      <label style="margin-bottom:4px">音色</label>
+      <select id="voice">
+        <option value="tongtong">tongtong（通用女声·默认）</option>
+        <option value="female-tianmei">female-tianmei（甜美女声）</option>
+        <option value="female-shaonv">female-shaonv（少女音）</option>
+        <option value="lovely_girl">lovely_girl（可爱女孩）</option>
+        <option value="xiaochen">xiaochen（通用男声）</option>
+        <option value="male-qn-daxuesheng">male-qn-daxuesheng（大学生男声）</option>
+        <option value="male-qn-jingying">male-qn-jingying（精英男声）</option>
+      </select>
+    </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="btnConnect" onclick="toggleConnect()">连接</button>
+    <button id="btnMic" onclick="toggleMic()" disabled>🎤 开始说话</button>
+  </div>
+
+  <div id="statusBar" class="status info">请输入 API Key 后点击连接</div>
+</div>
+
+<div class="card">
+  <label>对话记录</label>
+  <div id="transcript"><div class="msg-sys">连接后开始对话...</div></div>
+</div>
+
+<script>
+// ====== JWT 生成 ======
+async function generateJWT(apiKey) {
+  const parts = apiKey.split('.');
+  if (parts.length < 2) throw new Error('API Key 格式错误，应为 id.secret');
+  const id = parts[0];
+  const secret = parts.slice(1).join('.');
+
+  const header = { alg: 'HS256', sign_type: 'SIGN' };
+  const nowMs = Date.now();  // 毫秒！GLM 要求毫秒级时间戳
+  const payload = { api_key: id, exp: nowMs + 3600 * 1000, timestamp: nowMs };
+
+  const b64url = (obj) => btoa(JSON.stringify(obj))
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+  const signingInput = `${b64url(header)}.${b64url(payload)}`;
+
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+  return `${signingInput}.${sigB64}`;
+}
+
+// ====== UUID 生成 ======
+function uuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+// ====== 状态 ======
+let ws = null;
+let isConnected = false;
+let sessionReady = false;  // session.updated 后才真正就绪
+let isMicActive = false;
+let audioContext = null;
+let micStream = null;
+let micWorklet = null;
+let audioQueue = [];
+let isPlayingAudio = false;
+let currentAiText = '';
+let currentUserText = '';
+let pcmChunks = [];   // 模块级，stopMic 可以访问到
+
+function setStatus(msg, type = 'info') {
+  const el = document.getElementById('statusBar');
+  el.textContent = msg;
+  el.className = 'status ' + type;
+}
+
+function addMsg(type, text) {
+  const div = document.getElementById('transcript');
+  const p = document.createElement('p');
+  p.className = 'msg-' + type;
+  p.textContent = text;
+  div.appendChild(p);
+  div.scrollTop = div.scrollHeight;
+}
+
+function addSys(text) {
+  const div = document.getElementById('transcript');
+  const p = document.createElement('p');
+  p.className = 'msg-sys';
+  p.textContent = text;
+  div.appendChild(p);
+  div.scrollTop = div.scrollHeight;
+}
+
+// ====== 连接 ======
+async function toggleConnect() {
+  if (isConnected) {
+    disconnect();
+    return;
+  }
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { setStatus('请先输入 API Key', 'err'); return; }
+
+  const useJWT = document.getElementById('authMode').value === 'jwt';
+  let token;
+  if (useJWT) {
+    setStatus('生成 JWT...', 'info');
+    try {
+      token = await generateJWT(apiKey);
+      addSys('🔑 JWT(前60字): ' + token.substring(0, 60) + '...');
+    } catch(e) {
+      setStatus('JWT 生成失败: ' + e.message, 'err');
+      return;
+    }
+  } else {
+    token = apiKey;
+    addSys('🔑 使用原始 API Key 认证');
+  }
+
+  const model = document.getElementById('model').value;
+  // 国际版端点（z.ai）适合海外用户；国内版用 open.bigmodel.cn
+  const baseUrl = document.getElementById('region').value;
+  const url = `${baseUrl}?Authorization=${encodeURIComponent('Bearer ' + token)}`;
+
+  setStatus('连接中...', 'info');
+  try {
+    ws = new WebSocket(url);
+    ws.onopen = onWsOpen;
+    ws.onmessage = onWsMessage;
+    ws.onerror = (e) => setStatus('WebSocket 错误', 'err');
+    ws.onclose = (ev) => {
+      isConnected = false;
+      sessionReady = false;
+      isMicActive = false;
+      document.getElementById('btnConnect').textContent = '连接';
+      document.getElementById('btnConnect').className = '';
+      document.getElementById('btnMic').disabled = true;
+      document.getElementById('btnMic').textContent = '🎤 开始说话';
+      document.getElementById('btnMic').className = '';
+      const codes = { 1000:'正常关闭', 1006:'异常断开', 1007:'无效数据', 1008:'策略违规', 1011:'服务器错误' };
+      setStatus(`连接关闭: ${codes[ev.code]||'代码'+ev.code} ${ev.reason||''}`, 'err');
+      addSys(`连接关闭 (${ev.code}) ${ev.reason||''}`);
+      stopMic();
+    };
+  } catch(e) {
+    setStatus('连接失败: ' + e.message, 'err');
+  }
+}
+
+function onWsOpen() {
+  const model = document.getElementById('model').value;
+
+  addSys('⏳ WebSocket 已连接，等待 session.created...');
+
+  isConnected = true;
+  sessionReady = false;
+  document.getElementById('btnConnect').textContent = '断开';
+  document.getElementById('btnConnect').className = 'connected';
+  document.getElementById('btnMic').disabled = true;  // 等 session.updated 再启用
+  setStatus('已连接，等待会话初始化...', 'info');
+  addSys('✅ WebSocket 已连接到 ' + model);
+}
+
+function disconnect() {
+  if (ws) { ws.close(); ws = null; }
+  stopMic();
+}
+
+// ====== 消息处理 ======
+function onWsMessage(ev) {
+  // 原始日志 - 显示完整服务器消息（分行显示）
+  console.log('📨 RAW:', ev.data);
+  addSys('📨 ' + ev.data.substring(0, 800));
+
+  let msg;
+  try { msg = JSON.parse(ev.data); } catch(e) { return; }
+
+  switch(msg.type) {
+    case 'session.created':
+      addSys('✅ session.created 收到，发送 session.update...');
+      isConnected = true;
+      // 按照官方 SDK 格式发送完整的 session.update
+      if (ws && ws.readyState === 1) {
+        const voice = document.getElementById('voice').value;
+        const sessionUpdate = {
+          type: 'session.update',
+          event_id: uuid(),
+          client_timestamp: Date.now(),
+          session: {
+            turn_detection: { type: 'server_vad' },  // 服务端自动检测语音
+            instructions: '你是一个友好的中文AI助手，用简短自然的中文回答问题。',
+            output_audio_format: 'pcm',
+            input_audio_format: 'wav',
+            tools: null,
+            beta_fields: {
+              chat_mode: 'audio',
+              tts_source: 'e2e'
+            },
+            voice: voice
+          }
+        };
+        addSys('📤 session.update: ' + JSON.stringify(sessionUpdate).substring(0, 300));
+        ws.send(JSON.stringify(sessionUpdate));
+      }
+      break;
+
+    case 'session.updated':
+      addSys('✅ session.updated — 配置完成，可以说话了！');
+      sessionReady = true;
+      document.getElementById('btnMic').disabled = false;
+      setStatus('会话已就绪，点击麦克风开始说话', 'ok');
+      break;
+
+    case 'input_audio_buffer.speech_started':
+      addSys('🎙️ 检测到语音...');
+      // 打断 AI 说话
+      audioQueue = [];
+      isPlayingAudio = false;
+      break;
+
+    case 'input_audio_buffer.speech_stopped':
+      addSys('语音结束，处理中...');
+      break;
+
+    case 'conversation.item.input_audio_transcription.completed':
+      if (msg.transcript) {
+        addMsg('user', msg.transcript);
+      }
+      break;
+
+    case 'response.audio_transcript.delta':
+      currentAiText += (msg.delta || '');
+      break;
+
+    case 'response.audio_transcript.done':
+      if (currentAiText) {
+        addMsg('ai', currentAiText);
+        currentAiText = '';
+      }
+      break;
+
+    case 'response.audio.delta':
+      if (msg.delta) {
+        enqueueAudio(msg.delta);
+      }
+      break;
+
+    case 'response.done':
+      addSys('回答完成');
+      break;
+
+    case 'error':
+      setStatus('错误: ' + (msg.error?.message || JSON.stringify(msg.error)), 'err');
+      addSys('❌ 错误: ' + (msg.error?.message || ''));
+      break;
+  }
+}
+
+// ====== 音频播放（PCM16 输出）======
+function enqueueAudio(base64Data) {
+  const binary = atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  // PCM16 → Float32
+  const pcm16 = new Int16Array(bytes.buffer);
+  const float32 = new Float32Array(pcm16.length);
+  for (let i = 0; i < pcm16.length; i++) float32[i] = pcm16[i] / 32768;
+
+  audioQueue.push(float32);
+  if (!isPlayingAudio) playNextChunk();
+}
+
+function playNextChunk() {
+  if (audioQueue.length === 0) { isPlayingAudio = false; return; }
+  isPlayingAudio = true;
+
+  if (!audioContext) audioContext = new AudioContext({ sampleRate: 24000 });
+
+  const chunk = audioQueue.shift();
+  const buffer = audioContext.createBuffer(1, chunk.length, 24000);
+  buffer.copyToChannel(chunk, 0);
+
+  const src = audioContext.createBufferSource();
+  src.buffer = buffer;
+  src.connect(audioContext.destination);
+  src.onended = playNextChunk;
+  src.start();
+}
+
+// ====== 麦克风（PCM16 输入）======
+async function toggleMic() {
+  if (isMicActive) {
+    stopMic();
+    return;
+  }
+  try {
+    if (!audioContext) audioContext = new AudioContext({ sampleRate: 16000 });
+    else if (audioContext.sampleRate !== 16000) {
+      audioContext = new AudioContext({ sampleRate: 16000 });
+    }
+
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+    });
+
+    const source = audioContext.createMediaStreamSource(micStream);
+
+    // ScriptProcessor 简单实现（不依赖 AudioWorklet）
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    pcmChunks = [];
+    let _audioSentCount = 0;
+    let _audioSentBytes = 0;
+
+    addSys(`🎧 AudioContext 实际采样率: ${audioContext.sampleRate}Hz`);
+
+    processor.onaudioprocess = (e) => {
+      // 清零输出，防止麦克风信号回放产生杂音
+      const output = e.outputBuffer.getChannelData(0);
+      for (let i = 0; i < output.length; i++) output[i] = 0;
+
+      if (!isConnected || !isMicActive || !ws || ws.readyState !== 1) return;
+      const float32 = e.inputBuffer.getChannelData(0);
+
+      // 检测是否有声音（非静音）
+      let maxAmp = 0;
+      const pcm16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = float32[i];
+        if (Math.abs(s) > maxAmp) maxAmp = Math.abs(s);
+        pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(s * 32768)));
+      }
+
+      pcmChunks.push(new Int16Array(pcm16));
+
+      // 每 2 个 chunk 发送一次（~500ms）
+      if (pcmChunks.length >= 2) {
+        const totalSamples = pcmChunks.reduce((s, c) => s + c.length, 0);
+        const merged = new Int16Array(totalSamples);
+        let offset = 0;
+        for (const chunk of pcmChunks) { merged.set(chunk, offset); offset += chunk.length; }
+        pcmChunks = [];
+
+        // 构造 WAV (16kHz mono 16bit)
+        const sr = audioContext.sampleRate;
+        const dataBytes = merged.buffer.byteLength;
+        const wav = new ArrayBuffer(44 + dataBytes);
+        const v = new DataView(wav);
+        const ws2 = (s, o) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+        ws2('RIFF', 0); v.setUint32(4, 36 + dataBytes, true);
+        ws2('WAVE', 8); ws2('fmt ', 12);
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+        v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+        ws2('data', 36); v.setUint32(40, dataBytes, true);
+        new Int16Array(wav, 44).set(merged);
+
+        // base64 编码（分块避免栈溢出）
+        const bytes = new Uint8Array(wav);
+        let binaryStr = '';
+        for (let i = 0; i < bytes.length; i += 8192) {
+          binaryStr += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        }
+        const base64 = btoa(binaryStr);
+
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'input_audio_buffer.append', audio: base64, client_timestamp: Date.now() }));
+          _audioSentCount++;
+          _audioSentBytes += bytes.length;
+          // 每 4 次发送记录一次日志
+          if (_audioSentCount % 4 === 1) {
+            addSys(`🔊 已发送 ${_audioSentCount} 段 (${(_audioSentBytes/1024).toFixed(0)}KB) 最大振幅=${maxAmp.toFixed(3)}`);
+          }
+        }
+      }
+    };
+
+    source.connect(processor);
+    processor.connect(audioContext.destination);
+    micWorklet = { source, processor };
+
+    isMicActive = true;
+    document.getElementById('btnMic').textContent = '🔴 停止说话';
+    document.getElementById('btnMic').className = 'active';
+    setStatus('🎙️ 麦克风已开启，直接说话即可（自动检测语音）', 'ok');
+  } catch(e) {
+    setStatus('麦克风错误: ' + e.message, 'err');
+  }
+}
+
+function stopMic() {
+  isMicActive = false;
+  if (micWorklet) {
+    try { micWorklet.processor.disconnect(); micWorklet.source.disconnect(); } catch(e){}
+    micWorklet = null;
+  }
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
+  document.getElementById('btnMic').textContent = '🎤 开始说话';
+  document.getElementById('btnMic').className = '';
+
+  // server_vad 模式下不需要手动 commit，服务端自动检测
+  // 清理残余 PCM 数据
+  pcmChunks = [];
+  addSys('🎤 麦克风已关闭');
+}
+</script>
+</body>
+</html>

@@ -609,8 +609,22 @@
     <!-- 设置 -->
     <button class="settings-toggle" id="settings-toggle">&#x2699;&#xFE0F; 设置</button>
     <div class="settings-panel" id="settings-panel">
-      <label>Gemini API Key</label>
-      <input type="password" id="api-key-input" placeholder="输入你的 Gemini API Key" />
+      <label>语音引擎</label>
+      <select id="engine-select">
+        <option value="gemini">Gemini Live（海外推荐）</option>
+        <option value="glm">GLM-Realtime 智谱（国内/日本推荐）</option>
+      </select>
+      <div id="gemini-settings">
+        <label>Gemini API Key</label>
+        <input type="password" id="api-key-input" placeholder="输入你的 Gemini API Key" />
+      </div>
+      <div id="glm-settings" style="display:none">
+        <label>GLM API Key（格式：id.secret）</label>
+        <input type="password" id="glm-api-key-input" placeholder="输入你的 GLM API Key" />
+      </div>
+      <label id="speed-label">语速 <span id="speed-value">1.0x</span></label>
+      <input type="range" id="speed-range" min="0.8" max="1.5" step="0.1" value="1.0"
+        style="width:100%;margin-bottom:10px;accent-color:var(--btn-bg,#7c6fe0);" />
       <label>语音音色</label>
       <select id="voice-select">
         <option value="Puck">Puck（俏皮活泼）</option>
@@ -627,6 +641,7 @@
   <script src="modules/memory-manager.js"></script>
   <script src="modules/prompt-composer.js"></script>
   <script src="modules/tool-handler.js"></script>
+  <script src="modules/glm-client.js"></script>
 
   <script>
     // ============================================================
@@ -866,6 +881,9 @@
         ACTIONS[a.id] = `${CHARACTER_PATH}/assets/${a.id}.mp4`;
         ACTION_LABELS[a.id] = a.status;
       }
+      // speaking_v2（如果素材存在则注册，用于交替播放）
+      ACTIONS['speaking_v2'] = `${CHARACTER_PATH}/assets/speaking_v2.mp4`;
+      ACTION_LABELS['speaking_v2'] = ACTION_LABELS['speaking'];
 
       // 渲染动作按钮
       renderButtons('basic-buttons', CHARACTER.actions.basic, accent, accentDark);
@@ -877,9 +895,8 @@
       const idleVideo = document.getElementById('idle-video');
       idleVideo.src = `${CHARACTER_PATH}/assets/idle.mp4`;
 
-      // 设置默认语音
-      const voiceSelect = document.getElementById('voice-select');
-      voiceSelect.value = localStorage.getItem('gemini_voice') || CHARACTER.defaultVoice;
+      // 设置默认语音（根据当前引擎）
+      updateEngineUI();
 
       // 更新状态文字
       document.getElementById('status').textContent = `点击按钮和${CHARACTER.name}互动吧~`;
@@ -941,13 +958,77 @@
     // Section 5: 设置面板
     // ============================================================
 
+    // 引擎切换
+    const engineSelect    = document.getElementById('engine-select');
+    const geminiSettings  = document.getElementById('gemini-settings');
+    const glmSettings     = document.getElementById('glm-settings');
+    const glmApiKeyInput  = document.getElementById('glm-api-key-input');
+
+    const GEMINI_VOICES = [
+      { value: 'Puck', label: 'Puck（俏皮活泼）' },
+      { value: 'Leda', label: 'Leda（年轻可爱）' },
+      { value: 'Fenrir', label: 'Fenrir（兴奋活力）' },
+      { value: 'Aoede', label: 'Aoede（轻盈清新）' },
+      { value: 'Kore', label: 'Kore（清亮坚定）' },
+      { value: 'Achernar', label: 'Achernar（柔和温暖）' },
+    ];
+    const GLM_VOICES = [
+      { value: 'tongtong', label: 'tongtong（通用女声·默认）' },
+      { value: 'female-tianmei', label: 'female-tianmei（甜美女声）' },
+      { value: 'female-shaonv', label: 'female-shaonv（少女音）' },
+      { value: 'lovely_girl', label: 'lovely_girl（可爱女孩）' },
+      { value: 'xiaochen', label: 'xiaochen（通用男声）' },
+      { value: 'male-qn-daxuesheng', label: 'male-qn-daxuesheng（大学生男声）' },
+      { value: 'male-qn-jingying', label: 'male-qn-jingying（精英男声）' },
+    ];
+
+    function updateEngineUI() {
+      const engine = engineSelect.value;
+      geminiSettings.style.display = engine === 'gemini' ? '' : 'none';
+      glmSettings.style.display    = engine === 'glm'    ? '' : 'none';
+      // 切换音色列表
+      const voices = engine === 'glm' ? GLM_VOICES : GEMINI_VOICES;
+      const savedVoice = localStorage.getItem(engine + '_voice') || voices[0].value;
+      voiceSelect.innerHTML = '';
+      for (const v of voices) {
+        const opt = document.createElement('option');
+        opt.value = v.value;
+        opt.textContent = v.label;
+        if (v.value === savedVoice) opt.selected = true;
+        voiceSelect.appendChild(opt);
+      }
+    }
+
     // 恢复设置
+    engineSelect.value = localStorage.getItem('voice_engine') || 'gemini';
     apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
+    glmApiKeyInput.value = localStorage.getItem('glm_api_key') || '';
+    updateEngineUI();
+
+    engineSelect.addEventListener('change', () => {
+      localStorage.setItem('voice_engine', engineSelect.value);
+      updateEngineUI();
+    });
     apiKeyInput.addEventListener('change', () => {
       localStorage.setItem('gemini_api_key', apiKeyInput.value);
     });
+    glmApiKeyInput.addEventListener('change', () => {
+      localStorage.setItem('glm_api_key', glmApiKeyInput.value);
+    });
     voiceSelect.addEventListener('change', () => {
-      localStorage.setItem('gemini_voice', voiceSelect.value);
+      localStorage.setItem(engineSelect.value + '_voice', voiceSelect.value);
+    });
+
+    // 语速控制
+    const speedRange = document.getElementById('speed-range');
+    const speedValue = document.getElementById('speed-value');
+    speedRange.value = localStorage.getItem('playback_speed') || '1.0';
+    speedValue.textContent = speedRange.value + 'x';
+    speedRange.addEventListener('input', () => {
+      speedValue.textContent = speedRange.value + 'x';
+      localStorage.setItem('playback_speed', speedRange.value);
+      // 实时更新播放速度
+      if (audioStreamer) audioStreamer.playbackRate = parseFloat(speedRange.value);
     });
 
     settingsToggle.addEventListener('click', () => {
@@ -1049,6 +1130,9 @@
     let _currentVideoPath = null;   // 当前正在加载的视频相对路径
     let _suppressVideoErrors = false; // 清理视频时抑制 error 事件
 
+    // speaking 交替播放：speaking ↔ speaking_v2（如果 v2 存在）
+    let _speakingToggle = false;  // false=speaking, true=speaking_v2
+
     // 安全清除 actionVideo 的 src，不触发 error 事件
     function clearActionVideo() {
       _suppressVideoErrors = true;
@@ -1076,7 +1160,14 @@
         return;
       }
 
-      const videoSrc = ACTIONS[newState];
+      // speaking 状态：如果有 speaking_v2 则交替播放
+      let videoSrc = ACTIONS[newState];
+      if (newState === 'speaking' && _speakingToggle && ACTIONS['speaking_v2']) {
+        const v2Src = ACTIONS['speaking_v2'];
+        if (_avatarVideoCache[v2Src] !== false) {
+          videoSrc = v2Src;
+        }
+      }
       if (!videoSrc) return;
 
       // 用相对路径做缓存查询（和存储一致）
@@ -1092,7 +1183,8 @@
 
       _currentVideoPath = videoSrc;
       actionVideo.src = videoSrc;
-      actionVideo.loop = true;
+      // speaking 用非循环模式，通过 ended 事件交替切换
+      actionVideo.loop = (newState === 'speaking' && ACTIONS['speaking_v2']) ? false : true;
       actionVideo.muted = true;
       actionVideo.load();
 
@@ -1108,6 +1200,24 @@
       };
       actionVideo.addEventListener('canplay', onReady);
     }
+
+    // speaking 视频播完时交替切换 v1/v2（仅在语音对话中 speaking 状态）
+    actionVideo.addEventListener('ended', function _speakingAlternate() {
+      if (currentAvatarState !== 'speaking' || !ACTIONS['speaking_v2']) return;
+      if (!isVoiceChatActive) return;
+      _speakingToggle = !_speakingToggle;
+      const nextSrc = _speakingToggle ? ACTIONS['speaking_v2'] : ACTIONS['speaking'];
+      if (_avatarVideoCache[nextSrc] === false) {
+        // v2 不可用就继续播 v1
+        _speakingToggle = false;
+        actionVideo.play().catch(() => {});
+        return;
+      }
+      _currentVideoPath = nextSrc;
+      actionVideo.src = nextSrc;
+      actionVideo.load();
+      actionVideo.play().catch(() => {});
+    });
 
     // ============================================================
     // Section 7: 手动动作系统
@@ -1221,8 +1331,9 @@
     // ============================================================
 
     class AudioStreamer {
-      constructor(sampleRate = 24000) {
+      constructor(sampleRate = 24000, playbackRate = 1.0) {
         this.sampleRate = sampleRate;
+        this.playbackRate = playbackRate;
         this.context = null;
         this.gainNode = null;
         this.scheduledTime = 0;
@@ -1253,12 +1364,13 @@
         buffer.getChannelData(0).set(float32);
         const source = this.context.createBufferSource();
         source.buffer = buffer;
+        source.playbackRate.value = this.playbackRate;
         source.connect(this.gainNode);
 
         const now = this.context.currentTime;
         const startAt = Math.max(now + 0.02, this.scheduledTime);
         source.start(startAt);
-        this.scheduledTime = startAt + buffer.duration;
+        this.scheduledTime = startAt + buffer.duration / this.playbackRate;
         this.sources.push(source);
         source.onended = () => {
           this.sources = this.sources.filter(s => s !== source);
@@ -1476,14 +1588,18 @@
     });
 
     async function startVoiceChat() {
-      const apiKey = apiKeyInput.value.trim();
+      const engine = engineSelect.value;
+      const apiKey = engine === 'glm'
+        ? glmApiKeyInput.value.trim()
+        : apiKeyInput.value.trim();
+
       if (!apiKey) {
         settingsPanel.classList.add('open');
-        apiKeyInput.focus();
-        voiceStatusEl.textContent = '请先输入 Gemini API Key';
+        (engine === 'glm' ? glmApiKeyInput : apiKeyInput).focus();
+        voiceStatusEl.textContent = `请先输入 ${engine === 'glm' ? 'GLM' : 'Gemini'} API Key`;
         return;
       }
-      localStorage.setItem('gemini_api_key', apiKey);
+      localStorage.setItem(engine === 'glm' ? 'glm_api_key' : 'gemini_api_key', apiKey);
 
       voiceBtn.disabled = true;
       voiceStatusEl.textContent = '初始化记忆系统...';
@@ -1510,26 +1626,34 @@
         console.log('[Soul] System prompt 长度:', systemPrompt.length);
         console.log('[Tools] 工具数量:', functionDeclarations.length);
 
-        voiceStatusEl.textContent = '连接中...';
+        voiceStatusEl.textContent = `连接 ${engine === 'glm' ? 'GLM' : 'Gemini'}...`;
         const voice = voiceSelect.value;
-        geminiClient = new GeminiLiveClient(apiKey, voice, systemPrompt, functionDeclarations);
 
-        geminiClient.onAudio = (base64) => {
+        // 根据引擎创建对应客户端
+        let liveClient;
+        if (engine === 'glm') {
+          liveClient = new GLMLiveClient(apiKey, voice, systemPrompt, functionDeclarations);
+        } else {
+          liveClient = new GeminiLiveClient(apiKey, voice, systemPrompt, functionDeclarations);
+        }
+        geminiClient = liveClient;  // 复用变量名，接口一致
+
+        liveClient.onAudio = (base64) => {
           if (!modelSpeaking) { modelSpeaking = true; setAvatarState('speaking'); }
           audioStreamer.addPCM16(base64);
         };
-        geminiClient.onTurnComplete = () => {
+        liveClient.onTurnComplete = () => {
           audioStreamer.waitForEnd(() => { modelSpeaking = false; setAvatarState('idle'); });
         };
-        geminiClient.onInterrupted = () => {
+        liveClient.onInterrupted = () => {
           audioStreamer.stop(); modelSpeaking = false; setAvatarState('listening');
         };
-        geminiClient.onClose = () => {
+        liveClient.onClose = () => {
           diagLog('onClose 回调触发，isVoiceChatActive=' + isVoiceChatActive);
           if (isVoiceChatActive) { voiceStatusEl.textContent = '连接已断开（查看连接诊断）'; stopVoiceChat(); }
         };
 
-        geminiClient.onToolCall = async (toolCall) => {
+        liveClient.onToolCall = async (toolCall) => {
           const t0 = performance.now();
           const functionCalls = toolCall.functionCalls || [];
           diagLog(`收到 toolCall: ${functionCalls.map(c => c.name).join(', ')} (${functionCalls.length}个)`);
@@ -1550,20 +1674,21 @@
             functionResponses.push({ response: result, id: call.id });
           }
 
-          const wsState = geminiClient?.ws?.readyState;
+          const wsState = liveClient?.ws?.readyState;
           diagLog(`发送 toolResponse (ws状态=${wsState}, 耗时=${(performance.now() - t0).toFixed(0)}ms)`);
           try {
-            geminiClient.sendToolResponse(functionResponses);
+            liveClient.sendToolResponse(functionResponses);
             diagLog('toolResponse 已发送');
           } catch (e) {
             diagLog(`toolResponse 发送失败: ${e.message}`);
           }
         };
 
-        await geminiClient.connect();
-        diagLog('WebSocket 已连接，setup 完成');
-        audioStreamer = new AudioStreamer(24000);
-        micRecorder = new MicRecorder((chunk) => geminiClient.sendAudio(chunk));
+        await liveClient.connect();
+        diagLog(`${engine.toUpperCase()} WebSocket 已连接`);
+        const speed = parseFloat(localStorage.getItem('playback_speed') || '1.0');
+        audioStreamer = new AudioStreamer(24000, speed);
+        micRecorder = new MicRecorder((chunk) => liveClient.sendAudio(chunk));
         await micRecorder.start();
         diagLog('麦克风已启动，开始对话');
 
@@ -1577,6 +1702,9 @@
         settingsPanel.classList.remove('open');
         voiceStatusEl.textContent = '语音对话中 - 请开始说话~';
         statusEl.textContent = '语音对话中...';
+
+        // GLM 使用 server_vad，不需要客户端 VAD 来切换 avatar 状态
+        // 但仍然用客户端 VAD 做视觉反馈（listening/think 动画）
         startVAD();
 
       } catch (err) {
