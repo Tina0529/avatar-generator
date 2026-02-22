@@ -590,7 +590,13 @@
 
     <p class="status" id="status">加载中...</p>
 
-    <!-- 调试面板 -->
+    <!-- 连接诊断面板 -->
+    <button class="settings-toggle" id="diag-toggle">&#x1F4CB; 连接诊断</button>
+    <div class="settings-panel" id="diag-panel">
+      <div id="diag-output" style="background:rgba(0,0,0,0.5);color:#ff0;font-family:monospace;font-size:11px;padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;">等待语音对话开始...</div>
+    </div>
+
+    <!-- 记忆调试面板 -->
     <button class="settings-toggle" id="debug-toggle">&#x1F50D; 记忆调试</button>
     <div class="settings-panel" id="debug-panel">
       <div id="debug-output" style="background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:12px;padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
@@ -626,6 +632,24 @@
     // ============================================================
     // Section 0: 角色选择器
     // ============================================================
+
+    // ============================================================
+    // 诊断日志系统（页面内可见 + console）
+    // ============================================================
+    const _diagLogs = [];
+    function diagLog(msg) {
+      const ts = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      const entry = `[${ts}] ${msg}`;
+      _diagLogs.push(entry);
+      if (_diagLogs.length > 100) _diagLogs.shift();
+      console.log('[Diag]', msg);
+      // 同步到调试面板（如果打开）
+      const el = document.getElementById('diag-output');
+      if (el) {
+        el.textContent = _diagLogs.slice(-30).join('\n');
+        el.scrollTop = el.scrollHeight;
+      }
+    }
 
     let CHARACTER_ID = null;
     let CHARACTER_PATH = '';
@@ -930,7 +954,12 @@
       settingsPanel.classList.toggle('open');
     });
 
-    // 调试面板
+    // 连接诊断面板
+    document.getElementById('diag-toggle').addEventListener('click', () => {
+      document.getElementById('diag-panel').classList.toggle('open');
+    });
+
+    // 记忆调试面板
     const debugToggle = document.getElementById('debug-toggle');
     const debugPanel = document.getElementById('debug-panel');
     const debugOutput = document.getElementById('debug-output');
@@ -1398,7 +1427,14 @@
           };
 
           this.ws.onerror = (err) => { clearTimeout(timeout); reject(err); if (this.onError) this.onError(err); };
-          this.ws.onclose = () => { if (this.onClose) this.onClose(); };
+          this.ws.onclose = (ev) => {
+            const reason = ev.reason || '(无原因)';
+            const codeMap = { 1000: '正常关闭', 1001: '离开', 1006: '异常断开', 1008: '策略违规', 1011: '服务器错误' };
+            const desc = codeMap[ev.code] || `代码${ev.code}`;
+            console.error(`[WS] 连接关闭: ${desc}, reason="${reason}", wasClean=${ev.wasClean}`);
+            diagLog(`连接关闭: ${desc} | ${reason}`);
+            if (this.onClose) this.onClose();
+          };
         });
       }
 
@@ -1489,35 +1525,47 @@
           audioStreamer.stop(); modelSpeaking = false; setAvatarState('listening');
         };
         geminiClient.onClose = () => {
-          if (isVoiceChatActive) { voiceStatusEl.textContent = '连接已断开'; stopVoiceChat(); }
+          diagLog('onClose 回调触发，isVoiceChatActive=' + isVoiceChatActive);
+          if (isVoiceChatActive) { voiceStatusEl.textContent = '连接已断开（查看连接诊断）'; stopVoiceChat(); }
         };
 
         geminiClient.onToolCall = async (toolCall) => {
+          const t0 = performance.now();
           const functionCalls = toolCall.functionCalls || [];
+          diagLog(`收到 toolCall: ${functionCalls.map(c => c.name).join(', ')} (${functionCalls.length}个)`);
+
           const functionResponses = [];
           for (const call of functionCalls) {
-            console.log(`[Tool] 调用: ${call.name}`, call.args);
+            const callId = call.id || '(no-id)';
+            diagLog(`  执行: ${call.name}(${JSON.stringify(call.args || {}).substring(0, 80)}) id=${callId}`);
+            const t1 = performance.now();
             let result;
             try {
               result = await toolHandler.execute(call.name, call.args || {});
-              console.log(`[Tool] 结果:`, result);
+              diagLog(`  完成: ${call.name} ${(performance.now() - t1).toFixed(0)}ms`);
             } catch (e) {
-              console.error(`[Tool] 执行出错: ${call.name}`, e);
+              diagLog(`  出错: ${call.name} ${e.message}`);
               result = { error: e.message || '工具执行失败' };
             }
             functionResponses.push({ response: result, id: call.id });
           }
+
+          const wsState = geminiClient?.ws?.readyState;
+          diagLog(`发送 toolResponse (ws状态=${wsState}, 耗时=${(performance.now() - t0).toFixed(0)}ms)`);
           try {
             geminiClient.sendToolResponse(functionResponses);
+            diagLog('toolResponse 已发送');
           } catch (e) {
-            console.error('[Tool] 发送响应失败:', e);
+            diagLog(`toolResponse 发送失败: ${e.message}`);
           }
         };
 
         await geminiClient.connect();
+        diagLog('WebSocket 已连接，setup 完成');
         audioStreamer = new AudioStreamer(24000);
         micRecorder = new MicRecorder((chunk) => geminiClient.sendAudio(chunk));
         await micRecorder.start();
+        diagLog('麦克风已启动，开始对话');
 
         isVoiceChatActive = true;
         voiceBtn.disabled = false;
