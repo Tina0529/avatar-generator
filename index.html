@@ -1014,9 +1014,22 @@
     // Section 6: Avatar 状态控制
     // ============================================================
 
-    const _avatarVideoCache = {};
+    const _avatarVideoCache = {};   // 相对路径 → true/false
     let _avatarErrorCount = 0;
     const MAX_AVATAR_ERRORS = 3;
+    let _currentVideoPath = null;   // 当前正在加载的视频相对路径
+    let _suppressVideoErrors = false; // 清理视频时抑制 error 事件
+
+    // 安全清除 actionVideo 的 src，不触发 error 事件
+    function clearActionVideo() {
+      _suppressVideoErrors = true;
+      actionVideo.pause();
+      actionVideo.removeAttribute('src');
+      actionVideo.load();
+      _currentVideoPath = null;
+      // 延迟恢复，让浏览器处理完清理
+      setTimeout(() => { _suppressVideoErrors = false; }, 50);
+    }
 
     function setAvatarState(newState) {
       if (newState === currentAvatarState) return;
@@ -1027,7 +1040,7 @@
         idleVideo.classList.add('visible');
         actionVideo.loop = false;
         if (idleVideo.paused) idleVideo.play().catch(() => {});
-        setTimeout(() => { actionVideo.src = ''; }, FADE_MS);
+        setTimeout(() => { clearActionVideo(); }, FADE_MS);
         statusEl.textContent = isVoiceChatActive
           ? '语音对话中...'
           : `点击按钮和${CHARACTER?.name || ''}互动吧~`;
@@ -1037,6 +1050,7 @@
       const videoSrc = ACTIONS[newState];
       if (!videoSrc) return;
 
+      // 用相对路径做缓存查询（和存储一致）
       if (_avatarVideoCache[videoSrc] === false) {
         console.warn(`跳过已知不可用的视频: ${newState}`);
         return;
@@ -1047,6 +1061,7 @@
         return;
       }
 
+      _currentVideoPath = videoSrc;
       actionVideo.src = videoSrc;
       actionVideo.loop = true;
       actionVideo.muted = true;
@@ -1123,7 +1138,7 @@
       actionVideo.classList.remove('visible');
       idleVideo.classList.add('visible');
       setTimeout(() => {
-        actionVideo.src = '';
+        clearActionVideo();
         isManualPlaying = false;
         setButtonsEnabled(true);
         statusEl.textContent = `点击按钮和${CHARACTER?.name || ''}互动吧~`;
@@ -1131,15 +1146,20 @@
     });
 
     actionVideo.addEventListener('error', () => {
-      const failedSrc = actionVideo.src;
-      if (failedSrc) _avatarVideoCache[failedSrc] = false;
+      // 清理视频时触发的 error 忽略掉，防止死循环
+      if (_suppressVideoErrors) return;
+
+      // 用相对路径做缓存（和 setAvatarState 查询一致）
+      if (_currentVideoPath) {
+        _avatarVideoCache[_currentVideoPath] = false;
+        console.warn(`视频加载失败 (${_avatarErrorCount + 1}/${MAX_AVATAR_ERRORS}): ${_currentVideoPath}`);
+      }
       _avatarErrorCount++;
-      console.warn(`视频加载失败 (${_avatarErrorCount}/${MAX_AVATAR_ERRORS}): ${failedSrc}`);
 
       if (isVoiceChatActive) {
         actionVideo.classList.remove('visible');
         idleVideo.classList.add('visible');
-        actionVideo.src = '';
+        clearActionVideo();
         currentAvatarState = 'idle';
         return;
       }
@@ -1150,7 +1170,7 @@
     function resetToIdle() {
       if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
       actionVideo.classList.remove('visible');
-      actionVideo.src = '';
+      clearActionVideo();
       actionVideo.loop = false;
       pendingAction = null;
       isManualPlaying = false;
@@ -1477,11 +1497,21 @@
           const functionResponses = [];
           for (const call of functionCalls) {
             console.log(`[Tool] 调用: ${call.name}`, call.args);
-            const result = await toolHandler.execute(call.name, call.args || {});
-            console.log(`[Tool] 结果:`, result);
+            let result;
+            try {
+              result = await toolHandler.execute(call.name, call.args || {});
+              console.log(`[Tool] 结果:`, result);
+            } catch (e) {
+              console.error(`[Tool] 执行出错: ${call.name}`, e);
+              result = { error: e.message || '工具执行失败' };
+            }
             functionResponses.push({ response: result, id: call.id });
           }
-          geminiClient.sendToolResponse(functionResponses);
+          try {
+            geminiClient.sendToolResponse(functionResponses);
+          } catch (e) {
+            console.error('[Tool] 发送响应失败:', e);
+          }
         };
 
         await geminiClient.connect();
