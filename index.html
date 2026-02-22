@@ -2,18 +2,353 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Digital Avatar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Pocket Souls</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       min-height: 100vh;
+      background: #0a0a1a;
+      overflow-x: hidden;
+    }
+
+    /* ============================================================
+       Selector View
+       ============================================================ */
+
+    #selector-view {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      position: relative;
+    }
+
+    /* Animated background */
+    #selector-view::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(90, 60, 180, 0.15) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 50%, rgba(60, 130, 200, 0.1) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 100%, rgba(100, 60, 150, 0.1) 0%, transparent 50%);
+      z-index: 0;
+      animation: bgShift 12s ease-in-out infinite alternate;
+    }
+
+    @keyframes bgShift {
+      0% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+
+    /* Floating particles */
+    .particles {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .particle {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.4);
+      border-radius: 50%;
+      animation: particleFloat linear infinite;
+    }
+
+    .particle.large {
+      width: 3px;
+      height: 3px;
+      background: rgba(180, 160, 255, 0.5);
+    }
+
+    @keyframes particleFloat {
+      0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+      5% { opacity: 1; }
+      95% { opacity: 0.6; }
+      100% { transform: translateY(-5vh) translateX(30px); opacity: 0; }
+    }
+
+    /* Title */
+    .selector-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    .selector-title {
+      font-size: 42px;
+      font-weight: 200;
+      letter-spacing: 8px;
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      animation: titleFadeIn 1s ease-out;
+    }
+
+    .selector-tagline {
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.4);
+      letter-spacing: 3px;
+      margin-bottom: 48px;
+      animation: titleFadeIn 1s ease-out 0.2s both;
+    }
+
+    @keyframes titleFadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Carousel */
+    .carousel {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      padding: 20px;
+      width: 100%;
+      max-width: 700px;
+      animation: cardsFadeIn 0.8s ease-out 0.4s both;
+    }
+
+    @keyframes cardsFadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Character Card */
+    .character-card {
+      position: relative;
+      width: 260px;
+      height: 440px;
+      border-radius: 24px;
+      overflow: hidden;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 0.5s cubic-bezier(0.25, 0.8, 0.25, 1),
+                  box-shadow 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .character-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 24px;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      z-index: 3;
+      transition: border-color 0.5s;
+      pointer-events: none;
+    }
+
+    .character-card:hover {
+      transform: translateY(-10px) scale(1.02);
+    }
+
+    .character-card.selected {
+      transform: translateY(-14px) scale(1.04);
+    }
+
+    .character-card.selected::before {
+      border-color: var(--card-accent, #fff);
+    }
+
+    /* Card glow effect */
+    .card-glow {
+      position: absolute;
+      inset: -2px;
+      border-radius: 26px;
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.5s;
+      background: var(--card-accent, #7c6fe0);
+      filter: blur(20px);
+    }
+
+    .character-card:hover .card-glow {
+      opacity: 0.3;
+    }
+
+    .character-card.selected .card-glow {
+      opacity: 0.5;
+      animation: glowPulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes glowPulse {
+      0%, 100% { opacity: 0.4; filter: blur(20px); }
+      50% { opacity: 0.6; filter: blur(25px); }
+    }
+
+    /* Card media (video / image) */
+    .card-media {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    .character-card:hover .card-media {
+      transform: scale(1.05);
+    }
+
+    /* Card info overlay */
+    .card-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 32px 24px 24px;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+      z-index: 2;
+    }
+
+    .card-name {
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      letter-spacing: 1px;
+    }
+
+    .card-tagline {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+      line-height: 1.4;
+    }
+
+    /* Enter button */
+    .enter-btn {
+      margin-top: 40px;
+      padding: 16px 52px;
+      font-size: 17px;
+      font-weight: 600;
+      border: none;
+      border-radius: 999px;
+      color: white;
+      cursor: pointer;
+      letter-spacing: 2px;
+      transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(10px);
+      animation: cardsFadeIn 0.8s ease-out 0.6s both;
+    }
+
+    .enter-btn:disabled {
+      opacity: 0.3;
+      cursor: default;
+      transform: none;
+    }
+
+    .enter-btn:not(:disabled) {
+      background: linear-gradient(135deg, var(--btn-bg, #7c6fe0), var(--btn-bg-dark, #5a4fbf));
+      box-shadow: 0 4px 24px var(--btn-glow, rgba(124, 111, 224, 0.4));
+    }
+
+    .enter-btn:not(:disabled):hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 36px var(--btn-glow, rgba(124, 111, 224, 0.5));
+    }
+
+    .enter-btn:not(:disabled):active {
+      transform: translateY(-1px);
+    }
+
+    /* Selector exit animation */
+    #selector-view.exit {
+      animation: selectorExit 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes selectorExit {
+      to {
+        opacity: 0;
+        transform: scale(1.08);
+        filter: blur(10px);
+      }
+    }
+
+    /* Mobile carousel */
+    @media (max-width: 600px) {
+      .selector-title { font-size: 32px; letter-spacing: 5px; }
+      .selector-tagline { margin-bottom: 32px; }
+
+      .carousel {
+        justify-content: flex-start;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 20px calc(50% - 140px);
+        gap: 20px;
+      }
+      .carousel::-webkit-scrollbar { display: none; }
+
+      .character-card {
+        width: 280px;
+        height: 460px;
+        scroll-snap-align: center;
+      }
+    }
+
+    /* ============================================================
+       Chat View
+       ============================================================ */
+
+    #chat-view {
       display: flex;
       flex-direction: column;
       align-items: center;
       padding: 20px;
+      min-height: 100vh;
+      animation: chatEnter 0.6s ease-out;
+    }
+
+    @keyframes chatEnter {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Back button */
+    .back-btn {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 100;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 18px;
+      cursor: pointer;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .back-btn:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Chat header */
+    .chat-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
     h1 {
@@ -211,56 +546,75 @@
   </style>
 </head>
 <body>
-  <h1 id="char-name">Loading...</h1>
-  <p class="subtitle" id="char-subtitle"></p>
 
-  <div class="avatar-container" id="avatar-container">
-    <img id="idle-image" alt="Avatar" />
-    <video id="idle-video" playsinline muted loop></video>
-    <video id="action-video" playsinline muted></video>
-  </div>
-
-  <div class="voice-section">
-    <button class="voice-btn" id="voice-btn" title="开始语音对话">🎤</button>
-    <p class="voice-status" id="voice-status">点击麦克风开始语音对话</p>
-  </div>
-
-  <div class="action-section" id="basic-section">
-    <div class="section-label">基础动作</div>
-    <div class="action-buttons" id="basic-buttons"></div>
-  </div>
-
-  <div class="action-section" id="fun-section">
-    <div class="section-label">趣味互动</div>
-    <div class="action-buttons" id="fun-buttons"></div>
-  </div>
-
-  <p class="status" id="status">加载中...</p>
-
-  <!-- 调试面板 -->
-  <button class="settings-toggle" id="debug-toggle">🔍 记忆调试</button>
-  <div class="settings-panel" id="debug-panel">
-    <div id="debug-output" style="background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:12px;padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
-    <div style="margin-top:8px;display:flex;gap:8px;">
-      <button id="debug-refresh" style="padding:6px 12px;border:none;border-radius:6px;background:#4a7c34;color:#fff;cursor:pointer;font-size:12px;">🔄 刷新</button>
-      <button id="debug-clear" style="padding:6px 12px;border:none;border-radius:6px;background:#c44646;color:#fff;cursor:pointer;font-size:12px;">🗑 清除全部记忆</button>
+  <!-- ===== Character Selector ===== -->
+  <div id="selector-view">
+    <div class="particles" id="particles"></div>
+    <div class="selector-content">
+      <h1 class="selector-title">Pocket Souls</h1>
+      <p class="selector-tagline">选择你的数字伙伴</p>
+      <div class="carousel" id="carousel"></div>
+      <button class="enter-btn" id="enter-btn" disabled>选择伙伴</button>
     </div>
   </div>
 
-  <!-- 设置 -->
-  <button class="settings-toggle" id="settings-toggle">⚙️ 设置</button>
-  <div class="settings-panel" id="settings-panel">
-    <label>Gemini API Key</label>
-    <input type="password" id="api-key-input" placeholder="输入你的 Gemini API Key" />
-    <label>语音音色</label>
-    <select id="voice-select">
-      <option value="Puck">Puck（俏皮活泼）</option>
-      <option value="Leda">Leda（年轻可爱）</option>
-      <option value="Fenrir">Fenrir（兴奋活力）</option>
-      <option value="Aoede">Aoede（轻盈清新）</option>
-      <option value="Kore">Kore（清亮坚定）</option>
-      <option value="Achernar">Achernar（柔和温暖）</option>
-    </select>
+  <!-- ===== Chat Interface ===== -->
+  <div id="chat-view" style="display:none">
+    <button class="back-btn" id="back-btn" title="切换角色">&#8592;</button>
+
+    <div class="chat-header">
+      <h1 id="char-name">Loading...</h1>
+      <p class="subtitle" id="char-subtitle"></p>
+    </div>
+
+    <div class="avatar-container" id="avatar-container">
+      <img id="idle-image" alt="Avatar" />
+      <video id="idle-video" playsinline muted loop></video>
+      <video id="action-video" playsinline muted></video>
+    </div>
+
+    <div class="voice-section">
+      <button class="voice-btn" id="voice-btn" title="开始语音对话">&#x1F3A4;</button>
+      <p class="voice-status" id="voice-status">点击麦克风开始语音对话</p>
+    </div>
+
+    <div class="action-section" id="basic-section">
+      <div class="section-label">基础动作</div>
+      <div class="action-buttons" id="basic-buttons"></div>
+    </div>
+
+    <div class="action-section" id="fun-section">
+      <div class="section-label">趣味互动</div>
+      <div class="action-buttons" id="fun-buttons"></div>
+    </div>
+
+    <p class="status" id="status">加载中...</p>
+
+    <!-- 调试面板 -->
+    <button class="settings-toggle" id="debug-toggle">&#x1F50D; 记忆调试</button>
+    <div class="settings-panel" id="debug-panel">
+      <div id="debug-output" style="background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:12px;padding:12px;border-radius:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;">
+        <button id="debug-refresh" style="padding:6px 12px;border:none;border-radius:6px;background:#4a7c34;color:#fff;cursor:pointer;font-size:12px;">&#x1F504; 刷新</button>
+        <button id="debug-clear" style="padding:6px 12px;border:none;border-radius:6px;background:#c44646;color:#fff;cursor:pointer;font-size:12px;">&#x1F5D1; 清除全部记忆</button>
+      </div>
+    </div>
+
+    <!-- 设置 -->
+    <button class="settings-toggle" id="settings-toggle">&#x2699;&#xFE0F; 设置</button>
+    <div class="settings-panel" id="settings-panel">
+      <label>Gemini API Key</label>
+      <input type="password" id="api-key-input" placeholder="输入你的 Gemini API Key" />
+      <label>语音音色</label>
+      <select id="voice-select">
+        <option value="Puck">Puck（俏皮活泼）</option>
+        <option value="Leda">Leda（年轻可爱）</option>
+        <option value="Fenrir">Fenrir（兴奋活力）</option>
+        <option value="Aoede">Aoede（轻盈清新）</option>
+        <option value="Kore">Kore（清亮坚定）</option>
+        <option value="Achernar">Achernar（柔和温暖）</option>
+      </select>
+    </div>
   </div>
 
   <!-- 共享模块 -->
@@ -270,16 +624,200 @@
 
   <script>
     // ============================================================
-    // Section 0: 角色配置加载
+    // Section 0: 角色选择器
     // ============================================================
 
-    // 从 URL 参数获取角色 ID，默认 fox-xiaoli
-    const CHARACTER_ID = new URLSearchParams(location.search).get('c') || 'fox-xiaoli';
-    const CHARACTER_PATH = `characters/${CHARACTER_ID}`;
+    let CHARACTER_ID = null;
+    let CHARACTER_PATH = '';
+    let CHARACTER = null;
+    let ACTIONS = {};
+    let ACTION_LABELS = {};
 
-    let CHARACTER = null; // 角色配置对象
-    let ACTIONS = {};     // action id → video path
-    let ACTION_LABELS = {}; // action id → status label
+    const selectorView = document.getElementById('selector-view');
+    const chatView = document.getElementById('chat-view');
+    const enterBtn = document.getElementById('enter-btn');
+    const carousel = document.getElementById('carousel');
+
+    // 生成背景粒子
+    function createParticles() {
+      const container = document.getElementById('particles');
+      for (let i = 0; i < 40; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle' + (Math.random() > 0.7 ? ' large' : '');
+        p.style.left = Math.random() * 100 + '%';
+        p.style.animationDuration = (8 + Math.random() * 15) + 's';
+        p.style.animationDelay = -(Math.random() * 20) + 's';
+        container.appendChild(p);
+      }
+    }
+
+    // 加载角色选择器
+    async function loadSelector() {
+      createParticles();
+
+      const res = await fetch('characters/index.json');
+      const characterIds = await res.json();
+
+      // 并行加载所有角色配置
+      const configs = await Promise.all(
+        characterIds.map(async (id) => {
+          const r = await fetch(`characters/${id}/config.json`);
+          return r.json();
+        })
+      );
+
+      let selectedId = null;
+
+      configs.forEach((config) => {
+        const card = document.createElement('div');
+        card.className = 'character-card';
+        card.dataset.id = config.id;
+        card.style.setProperty('--card-accent', config.theme.accent);
+
+        // 光晕层
+        const glow = document.createElement('div');
+        glow.className = 'card-glow';
+        glow.style.background = config.theme.accent;
+        card.appendChild(glow);
+
+        // 视频 / 图片背景
+        const video = document.createElement('video');
+        video.className = 'card-media';
+        video.src = `characters/${config.id}/assets/idle.mp4`;
+        video.poster = `characters/${config.id}/assets/idle.jpg`;
+        video.autoplay = true;
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        // 视频加载失败时降级到图片
+        video.addEventListener('error', () => {
+          const img = document.createElement('img');
+          img.className = 'card-media';
+          img.src = `characters/${config.id}/assets/idle.jpg`;
+          card.replaceChild(img, video);
+        }, { once: true });
+        card.appendChild(video);
+
+        // 信息覆层
+        const overlay = document.createElement('div');
+        overlay.className = 'card-overlay';
+        overlay.innerHTML = `
+          <div class="card-name">${config.name}</div>
+          <div class="card-tagline">${config.tagline || config.subtitle}</div>
+        `;
+        card.appendChild(overlay);
+
+        // 点击选择
+        card.addEventListener('click', () => {
+          document.querySelectorAll('.character-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedId = config.id;
+          enterBtn.disabled = false;
+          enterBtn.textContent = `进入${config.name}的世界`;
+          enterBtn.style.setProperty('--btn-bg', config.theme.accent);
+          enterBtn.style.setProperty('--btn-bg-dark', config.theme.accentDark);
+          enterBtn.style.setProperty('--btn-glow', config.theme.accent + '66');
+        });
+
+        carousel.appendChild(card);
+      });
+
+      // 进入按钮
+      enterBtn.addEventListener('click', () => {
+        if (!selectedId) return;
+        enterChat(selectedId);
+      });
+
+      // 移动端：监听滚动自动选中
+      if (window.innerWidth <= 600) {
+        let scrollTimer = null;
+        carousel.addEventListener('scroll', () => {
+          clearTimeout(scrollTimer);
+          scrollTimer = setTimeout(() => {
+            const cards = carousel.querySelectorAll('.character-card');
+            const center = carousel.scrollLeft + carousel.offsetWidth / 2;
+            let closest = null;
+            let closestDist = Infinity;
+            cards.forEach(c => {
+              const cardCenter = c.offsetLeft + c.offsetWidth / 2;
+              const dist = Math.abs(center - cardCenter);
+              if (dist < closestDist) { closestDist = dist; closest = c; }
+            });
+            if (closest && !closest.classList.contains('selected')) {
+              closest.click();
+            }
+          }, 100);
+        });
+      }
+    }
+
+    // 从选择器进入对话
+    function enterChat(characterId) {
+      CHARACTER_ID = characterId;
+      CHARACTER_PATH = `characters/${CHARACTER_ID}`;
+
+      // 更新 URL（不刷新页面）
+      const url = new URL(location);
+      url.searchParams.set('c', characterId);
+      history.replaceState({}, '', url);
+
+      // 退出动画
+      selectorView.classList.add('exit');
+
+      setTimeout(() => {
+        selectorView.style.display = 'none';
+        chatView.style.display = '';
+
+        // 加载角色并初始化
+        loadCharacter().then(() => {
+          const iv = document.getElementById('idle-video');
+          iv.addEventListener('canplay', () => {
+            iv.classList.add('visible');
+            iv.play().catch(() => {});
+          }, { once: true });
+          iv.load();
+        }).catch(err => {
+          document.getElementById('status').textContent = `加载角色失败: ${err.message}`;
+        });
+      }, 650);
+    }
+
+    // 启动：检查 URL 参数
+    const urlCharId = new URLSearchParams(location.search).get('c');
+    if (urlCharId) {
+      // 直接进入对话
+      CHARACTER_ID = urlCharId;
+      CHARACTER_PATH = `characters/${CHARACTER_ID}`;
+      selectorView.style.display = 'none';
+      chatView.style.display = '';
+
+      loadCharacter().then(() => {
+        const iv = document.getElementById('idle-video');
+        iv.addEventListener('canplay', () => {
+          iv.classList.add('visible');
+          iv.play().catch(() => {});
+        }, { once: true });
+        iv.load();
+      }).catch(err => {
+        document.getElementById('status').textContent = `加载角色失败: ${err.message}`;
+      });
+    } else {
+      // 显示角色选择器
+      loadSelector();
+    }
+
+    // 返回按钮：回到选择器
+    document.getElementById('back-btn').addEventListener('click', () => {
+      // 移除 URL 参数，刷新页面回到选择器
+      const url = new URL(location);
+      url.searchParams.delete('c');
+      location.href = url.toString();
+    });
+
+    // ============================================================
+    // Section 1: 角色配置加载
+    // ============================================================
 
     async function loadCharacter() {
       const res = await fetch(`${CHARACTER_PATH}/config.json`);
@@ -287,7 +825,7 @@
       CHARACTER = await res.json();
 
       // 设置页面
-      document.title = `${CHARACTER.name} - Digital Avatar`;
+      document.title = `${CHARACTER.name} - Pocket Souls`;
       document.getElementById('char-name').textContent = CHARACTER.name;
       document.getElementById('char-subtitle').textContent = CHARACTER.subtitle;
       document.body.style.background = CHARACTER.theme.background;
@@ -338,7 +876,7 @@
     }
 
     // ============================================================
-    // Section 1: 常量
+    // Section 2: 常量
     // ============================================================
     const FADE_MS = 350;
     const LOOP_END_THRESHOLD = 0.5;
@@ -353,7 +891,7 @@
     let toolHandler = null;
 
     // ============================================================
-    // Section 2: DOM 元素
+    // Section 3: DOM 元素
     // ============================================================
     const idleVideo      = document.getElementById('idle-video');
     const actionVideo    = document.getElementById('action-video');
@@ -367,7 +905,7 @@
     const voiceSelect    = document.getElementById('voice-select');
 
     // ============================================================
-    // Section 3: 状态变量
+    // Section 4: 状态变量
     // ============================================================
     let isManualPlaying = false;
     let pendingAction = null;
@@ -376,19 +914,8 @@
     let currentAvatarState = 'idle';
 
     // ============================================================
-    // Section 4: 初始化
+    // Section 5: 设置面板
     // ============================================================
-
-    // 加载角色配置后启动
-    loadCharacter().then(() => {
-      idleVideo.addEventListener('canplay', () => {
-        idleVideo.classList.add('visible');
-        idleVideo.play().catch(() => {});
-      }, { once: true });
-      idleVideo.load();
-    }).catch(err => {
-      document.getElementById('status').textContent = `加载角色失败: ${err.message}`;
-    });
 
     // 恢复设置
     apiKeyInput.value = localStorage.getItem('gemini_api_key') || '';
@@ -484,12 +1011,12 @@
     }
 
     // ============================================================
-    // Section 5: Avatar 状态控制
+    // Section 6: Avatar 状态控制
     // ============================================================
 
-    const _avatarVideoCache = {};   // 缓存已验证可用的视频 URL
-    let _avatarErrorCount = 0;       // 连续错误计数，防止无限重试
-    const MAX_AVATAR_ERRORS = 3;     // 最大连续错误次数
+    const _avatarVideoCache = {};
+    let _avatarErrorCount = 0;
+    const MAX_AVATAR_ERRORS = 3;
 
     function setAvatarState(newState) {
       if (newState === currentAvatarState) return;
@@ -510,13 +1037,11 @@
       const videoSrc = ACTIONS[newState];
       if (!videoSrc) return;
 
-      // 如果该视频之前加载失败过，跳过不再尝试
       if (_avatarVideoCache[videoSrc] === false) {
         console.warn(`跳过已知不可用的视频: ${newState}`);
         return;
       }
 
-      // 连续错误过多，停止尝试
       if (_avatarErrorCount >= MAX_AVATAR_ERRORS) {
         console.warn(`连续视频错误 ${_avatarErrorCount} 次，暂停视频切换`);
         return;
@@ -531,8 +1056,8 @@
 
       const onReady = () => {
         actionVideo.removeEventListener('canplay', onReady);
-        _avatarVideoCache[videoSrc] = true;  // 标记为可用
-        _avatarErrorCount = 0;                // 重置错误计数
+        _avatarVideoCache[videoSrc] = true;
+        _avatarErrorCount = 0;
         actionVideo.classList.add('visible');
         idleVideo.classList.remove('visible');
         actionVideo.play().catch(() => {});
@@ -541,7 +1066,7 @@
     }
 
     // ============================================================
-    // Section 6: 手动动作系统
+    // Section 7: 手动动作系统
     // ============================================================
 
     function playManualAction(action) {
@@ -607,12 +1132,11 @@
 
     actionVideo.addEventListener('error', () => {
       const failedSrc = actionVideo.src;
-      if (failedSrc) _avatarVideoCache[failedSrc] = false;  // 标记为不可用
+      if (failedSrc) _avatarVideoCache[failedSrc] = false;
       _avatarErrorCount++;
       console.warn(`视频加载失败 (${_avatarErrorCount}/${MAX_AVATAR_ERRORS}): ${failedSrc}`);
 
       if (isVoiceChatActive) {
-        // 语音对话中：回到 idle 画面但不中断对话
         actionVideo.classList.remove('visible');
         idleVideo.classList.add('visible');
         actionVideo.src = '';
@@ -644,7 +1168,7 @@
     }
 
     // ============================================================
-    // Section 7: 音频播放器
+    // Section 8: 音频播放器
     // ============================================================
 
     class AudioStreamer {
@@ -721,7 +1245,7 @@
     }
 
     // ============================================================
-    // Section 8: 麦克风录音器
+    // Section 9: 麦克风录音器
     // ============================================================
 
     class MicRecorder {
@@ -778,7 +1302,7 @@
     }
 
     // ============================================================
-    // Section 9: Gemini Live WebSocket 客户端
+    // Section 10: Gemini Live WebSocket 客户端
     // ============================================================
 
     class GeminiLiveClient {
@@ -876,7 +1400,7 @@
     }
 
     // ============================================================
-    // Section 10: 语音对话控制器
+    // Section 11: 语音对话控制器
     // ============================================================
 
     let geminiClient = null;
@@ -909,7 +1433,6 @@
       voiceStatusEl.textContent = '初始化记忆系统...';
 
       try {
-        // 初始化模块（使用角色专属的 DB 名）
         if (!memoryManager) {
           memoryManager = new MemoryManager(CHARACTER.dbName);
           await memoryManager.init();
@@ -1014,7 +1537,7 @@
     }
 
     // ============================================================
-    // Section 11: 语音活动检测 (VAD)
+    // Section 12: 语音活动检测 (VAD)
     // ============================================================
 
     function startVAD() {
