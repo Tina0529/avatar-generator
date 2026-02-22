@@ -1790,14 +1790,20 @@
         }
         geminiClient = liveClient;  // 复用变量名，接口一致
 
+        let _audioChunkCount = 0;  // 用于跳过 GLM 回复开头的提示音
         liveClient.onAudio = (base64) => {
+          _audioChunkCount++;
+          // GLM VAD 检测后前 2 个音频包可能含提示音，跳过
+          if (engine === 'glm' && _audioChunkCount <= 2) return;
           if (!modelSpeaking) { modelSpeaking = true; setAvatarState('speaking'); }
           audioStreamer.addPCM16(base64);
         };
         liveClient.onTurnComplete = () => {
+          _audioChunkCount = 0;  // 重置，下次回复重新计数
           audioStreamer.waitForEnd(() => { modelSpeaking = false; setAvatarState('idle'); });
         };
         liveClient.onInterrupted = () => {
+          _audioChunkCount = 0;
           audioStreamer.stop(); modelSpeaking = false; setAvatarState('listening');
         };
         liveClient.onClose = () => {
