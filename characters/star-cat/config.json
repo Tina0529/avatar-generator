@@ -12,13 +12,16 @@
     "fun": "#e06fd0",
     "funDark": "#bf4fb0"
   },
+  "idle": {
+    "sequence": ["idel1.mp4", "idel2.mp4"]
+  },
   "actions": {
     "basic": [
-      { "id": "speaking",  "emoji": "🗣", "label": "说话",   "status": "星洛在说话..." },
-      { "id": "listening", "emoji": "👂", "label": "倾听",   "status": "星洛在认真听..." },
+      { "id": "speaking",  "emoji": "🗣", "label": "说话",   "status": "星洛在说话...", "sequence": ["speaking1.mp4", "speaking2.mp4"] },
+      { "id": "listening", "emoji": "👂", "label": "倾听",   "status": "星洛在认真听...", "file": "listening2.mp4" },
       { "id": "wave",      "emoji": "🐾", "label": "挥爪",   "status": "星洛挥挥爪~" },
       { "id": "nod",       "emoji": "😊", "label": "点头",   "status": "星洛点点头~" },
-      { "id": "think",     "emoji": "🤔", "label": "思考",   "status": "星洛在思考..." }
+      { "id": "think",     "emoji": "🤔", "label": "思考",   "status": "星洛在思考...", "file": "thinking2.mp4" }
     ],
     "fun": [
       { "id": "sneeze",   "emoji": "✨", "label": "星光喷嚏", "status": "阿嚏！星星飞出来了~" },

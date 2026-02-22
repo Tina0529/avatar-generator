@@ -396,18 +396,18 @@
     }
 
     #idle-image { z-index: 1; }
-    #idle-video {
+    .idle-layer {
       z-index: 2;
       opacity: 0;
-      transition: opacity 0.35s ease-in-out;
+      /* 无过渡：idle 切换瞬间完成，action 层在上面负责交叉淡化 */
     }
-    #action-video {
+    .action-layer {
       z-index: 3;
       opacity: 0;
       transition: opacity 0.35s ease-in-out;
     }
-    #idle-video.visible { opacity: 1; }
-    #action-video.visible { opacity: 1; }
+    .idle-layer.visible { opacity: 1; }
+    .action-layer.visible { opacity: 1; }
 
     .voice-section {
       margin-top: 20px;
@@ -569,8 +569,10 @@
 
     <div class="avatar-container" id="avatar-container">
       <img id="idle-image" alt="Avatar" />
-      <video id="idle-video" playsinline muted loop></video>
-      <video id="action-video" playsinline muted></video>
+      <video id="idle-video" class="idle-layer" playsinline muted loop></video>
+      <video id="idle-video-b" class="idle-layer" playsinline muted></video>
+      <video id="action-video" class="action-layer" playsinline muted></video>
+      <video id="action-video-b" class="action-layer" playsinline muted></video>
     </div>
 
     <div class="voice-section">
@@ -722,7 +724,11 @@
         // 视频 / 图片背景
         const video = document.createElement('video');
         video.className = 'card-media';
-        video.src = `characters/${config.id}/assets/idle.mp4`;
+        // 优先使用 idle sequence 的第一个，否则用 idle.mp4
+        const idleSrc = (config.idle && config.idle.sequence)
+          ? `characters/${config.id}/assets/${config.idle.sequence[0]}`
+          : `characters/${config.id}/assets/idle.mp4`;
+        video.src = idleSrc;
         video.poster = `characters/${config.id}/assets/idle.jpg`;
         video.autoplay = true;
         video.muted = true;
@@ -878,12 +884,21 @@
       // 构建 ACTIONS 和 ACTION_LABELS
       const allActions = [...CHARACTER.actions.basic, ...CHARACTER.actions.fun];
       for (const a of allActions) {
-        ACTIONS[a.id] = `${CHARACTER_PATH}/assets/${a.id}.mp4`;
-        ACTION_LABELS[a.id] = a.status;
+        if (a.sequence) {
+          // 顺序播放序列：存储为数组
+          ACTIONS[a.id] = a.sequence.map(f => `${CHARACTER_PATH}/assets/${f}`);
+          ACTION_LABELS[a.id] = a.status;
+        } else {
+          const fileName = a.file || `${a.id}.mp4`;
+          ACTIONS[a.id] = `${CHARACTER_PATH}/assets/${fileName}`;
+          ACTION_LABELS[a.id] = a.status;
+        }
       }
-      // speaking_v2（如果素材存在则注册，用于交替播放）
-      ACTIONS['speaking_v2'] = `${CHARACTER_PATH}/assets/speaking_v2.mp4`;
-      ACTION_LABELS['speaking_v2'] = ACTION_LABELS['speaking'];
+      // speaking_v2 兼容（仅在非 sequence 模式下）
+      if (!Array.isArray(ACTIONS['speaking'])) {
+        ACTIONS['speaking_v2'] = `${CHARACTER_PATH}/assets/speaking_v2.mp4`;
+        ACTION_LABELS['speaking_v2'] = ACTION_LABELS['speaking'];
+      }
 
       // 渲染动作按钮
       renderButtons('basic-buttons', CHARACTER.actions.basic, accent, accentDark);
@@ -892,8 +907,19 @@
 
       // 设置 idle 素材
       document.getElementById('idle-image').src = `${CHARACTER_PATH}/assets/idle.jpg`;
-      const idleVideo = document.getElementById('idle-video');
-      idleVideo.src = `${CHARACTER_PATH}/assets/idle.mp4`;
+      if (CHARACTER.idle && CHARACTER.idle.sequence) {
+        // 顺序循环模式：idel1 → idel2 → idel1 → ...
+        _idleSequence = CHARACTER.idle.sequence.map(f => `${CHARACTER_PATH}/assets/${f}`);
+        _idleSeqIndex = 0;
+        idleVideo.loop = false;
+        idleBuffer.loop = false;
+        idleVideo.src = _idleSequence[0];
+        // 预加载第二个到 buffer
+        _preloadNextIdle();
+      } else {
+        _idleSequence = null;
+        idleVideo.src = `${CHARACTER_PATH}/assets/idle.mp4`;
+      }
 
       // 设置默认语音（根据当前引擎）
       updateEngineUI();
@@ -934,8 +960,16 @@
     // ============================================================
     // Section 3: DOM 元素
     // ============================================================
-    const idleVideo      = document.getElementById('idle-video');
-    const actionVideo    = document.getElementById('action-video');
+    const idleVideoA     = document.getElementById('idle-video');
+    const idleVideoB     = document.getElementById('idle-video-b');
+    const actionVideoA   = document.getElementById('action-video');
+    const actionVideoB   = document.getElementById('action-video-b');
+
+    // 双缓冲：当前播放 / 预加载
+    let idleVideo  = idleVideoA;   // 当前活跃的 idle
+    let idleBuffer = idleVideoB;   // 预加载的 idle
+    let actionVideo  = actionVideoA;  // 当前活跃的 action
+    let actionBuffer = actionVideoB;  // 预加载的 action
     const statusEl       = document.getElementById('status');
     const voiceBtn       = document.getElementById('voice-btn');
     const voiceStatusEl  = document.getElementById('voice-status');
@@ -953,6 +987,10 @@
     let waitTimer = null;
     let isVoiceChatActive = false;
     let currentAvatarState = 'idle';
+
+    // idle 顺序循环
+    let _idleSequence = null;   // null=单视频loop, 数组=顺序播放
+    let _idleSeqIndex = 0;
 
     // ============================================================
     // Section 5: 设置面板
@@ -1130,18 +1168,61 @@
     let _currentVideoPath = null;   // 当前正在加载的视频相对路径
     let _suppressVideoErrors = false; // 清理视频时抑制 error 事件
 
-    // speaking 交替播放：speaking ↔ speaking_v2（如果 v2 存在）
+    // speaking 顺序播放索引（sequence 模式）
+    let _speakingSeqIndex = 0;
+    // speaking 交替播放：speaking ↔ speaking_v2（旧模式兼容）
     let _speakingToggle = false;  // false=speaking, true=speaking_v2
 
-    // 安全清除 actionVideo 的 src，不触发 error 事件
-    function clearActionVideo() {
+    // idle 双缓冲：预加载下一个，播完瞬间切换
+    function _preloadNextIdle() {
+      if (!_idleSequence || _idleSequence.length < 2) return;
+      const nextIdx = (_idleSeqIndex + 1) % _idleSequence.length;
+      idleBuffer.src = _idleSequence[nextIdx];
+      idleBuffer.load();
+    }
+
+    function _onIdleEnded() {
+      if (!_idleSequence || _idleSequence.length === 0) return;
+      if (currentAvatarState !== 'idle') return;
+      _idleSeqIndex = (_idleSeqIndex + 1) % _idleSequence.length;
+      // 瞬间切换（idle 层无 CSS transition，自然是即时的）
+      idleBuffer.classList.add('visible');
+      idleBuffer.play().catch(() => {});
+      idleVideo.classList.remove('visible');
+      // 交换角色
+      const tmp = idleVideo;
+      idleVideo = idleBuffer;
+      idleBuffer = tmp;
+      // 预加载下一个
+      _preloadNextIdle();
+    }
+
+    idleVideoA.addEventListener('ended', _onIdleEnded);
+    idleVideoB.addEventListener('ended', _onIdleEnded);
+
+    // 安全清除 action 视频的 src，不触发 error 事件
+    function clearActionVideos() {
       _suppressVideoErrors = true;
       actionVideo.pause();
       actionVideo.removeAttribute('src');
       actionVideo.load();
+      actionBuffer.pause();
+      actionBuffer.removeAttribute('src');
+      actionBuffer.load();
       _currentVideoPath = null;
-      // 延迟恢复，让浏览器处理完清理
       setTimeout(() => { _suppressVideoErrors = false; }, 50);
+    }
+
+    // speaking 双缓冲：预加载下一个 speaking 片段
+    function _preloadNextSpeaking() {
+      const actionDef = ACTIONS['speaking'];
+      if (!Array.isArray(actionDef) || actionDef.length < 2) return;
+      const nextIdx = (_speakingSeqIndex + 1) % actionDef.length;
+      const nextSrc = actionDef[nextIdx];
+      if (_avatarVideoCache[nextSrc] === false) return;
+      actionBuffer.src = nextSrc;
+      actionBuffer.muted = true;
+      actionBuffer.load();
     }
 
     function setAvatarState(newState) {
@@ -1149,28 +1230,50 @@
       currentAvatarState = newState;
 
       if (newState === 'idle') {
-        actionVideo.classList.remove('visible');
+        _speakingSeqIndex = 0;
+        // 先显示 idle（瞬间，在 action 下面），再淡出 action
         idleVideo.classList.add('visible');
-        actionVideo.loop = false;
+        if (_idleSequence) {
+          _idleSeqIndex = 0;
+          idleBuffer.classList.remove('visible');
+          idleVideo.src = _idleSequence[0];
+          idleVideo.load();
+          _preloadNextIdle();
+        }
         if (idleVideo.paused) idleVideo.play().catch(() => {});
-        setTimeout(() => { clearActionVideo(); }, FADE_MS);
+        // action 层淡出（350ms transition），露出下面的 idle
+        actionVideo.classList.remove('visible');
+        actionBuffer.classList.remove('visible');
+        actionVideo.loop = false;
+        setTimeout(() => { clearActionVideos(); }, FADE_MS);
         statusEl.textContent = isVoiceChatActive
           ? '语音对话中...'
           : `点击按钮和${CHARACTER?.name || ''}互动吧~`;
         return;
       }
 
-      // speaking 状态：如果有 speaking_v2 则交替播放
-      let videoSrc = ACTIONS[newState];
-      if (newState === 'speaking' && _speakingToggle && ACTIONS['speaking_v2']) {
-        const v2Src = ACTIONS['speaking_v2'];
-        if (_avatarVideoCache[v2Src] !== false) {
-          videoSrc = v2Src;
+      // 解析视频源：支持 sequence 数组和单文件
+      const actionDef = ACTIONS[newState];
+      let videoSrc;
+      let isSequence = false;
+
+      if (Array.isArray(actionDef)) {
+        // sequence 模式（speaking 等）
+        isSequence = true;
+        _speakingSeqIndex = 0;
+        videoSrc = actionDef[0];
+      } else {
+        videoSrc = actionDef;
+        // 旧模式兼容：speaking_v2 交替
+        if (newState === 'speaking' && _speakingToggle && ACTIONS['speaking_v2']) {
+          const v2Src = ACTIONS['speaking_v2'];
+          if (_avatarVideoCache[v2Src] !== false) {
+            videoSrc = v2Src;
+          }
         }
       }
       if (!videoSrc) return;
 
-      // 用相对路径做缓存查询（和存储一致）
       if (_avatarVideoCache[videoSrc] === false) {
         console.warn(`跳过已知不可用的视频: ${newState}`);
         return;
@@ -1183,10 +1286,14 @@
 
       _currentVideoPath = videoSrc;
       actionVideo.src = videoSrc;
-      // speaking 用非循环模式，通过 ended 事件交替切换
-      actionVideo.loop = (newState === 'speaking' && ACTIONS['speaking_v2']) ? false : true;
+      actionVideo.loop = !isSequence && !(newState === 'speaking' && ACTIONS['speaking_v2']);
       actionVideo.muted = true;
       actionVideo.load();
+
+      // sequence 模式预加载下一个到 buffer
+      if (isSequence && newState === 'speaking') {
+        _preloadNextSpeaking();
+      }
 
       statusEl.textContent = ACTION_LABELS[newState] || '';
 
@@ -1194,30 +1301,72 @@
         actionVideo.removeEventListener('canplay', onReady);
         _avatarVideoCache[videoSrc] = true;
         _avatarErrorCount = 0;
+        // action 层淡入（z-index 3，在 idle 上面），idle 保持可见不闪
         actionVideo.classList.add('visible');
-        idleVideo.classList.remove('visible');
         actionVideo.play().catch(() => {});
+        // action 淡入完成后再隐藏 idle（节省资源）
+        setTimeout(() => {
+          if (currentAvatarState !== 'idle') {
+            idleVideo.classList.remove('visible');
+            idleBuffer.classList.remove('visible');
+          }
+        }, FADE_MS);
       };
       actionVideo.addEventListener('canplay', onReady);
     }
 
-    // speaking 视频播完时交替切换 v1/v2（仅在语音对话中 speaking 状态）
-    actionVideo.addEventListener('ended', function _speakingAlternate() {
-      if (currentAvatarState !== 'speaking' || !ACTIONS['speaking_v2']) return;
+    // speaking 视频播完时顺序切换（双缓冲 sequence 或旧 v2 模式）
+    function _onSpeakingEnded() {
+      if (currentAvatarState !== 'speaking') return;
       if (!isVoiceChatActive) return;
-      _speakingToggle = !_speakingToggle;
-      const nextSrc = _speakingToggle ? ACTIONS['speaking_v2'] : ACTIONS['speaking'];
-      if (_avatarVideoCache[nextSrc] === false) {
-        // v2 不可用就继续播 v1
-        _speakingToggle = false;
+
+      const actionDef = ACTIONS['speaking'];
+
+      if (Array.isArray(actionDef)) {
+        // sequence 双缓冲：buffer 已预加载，瞬间切换
+        _speakingSeqIndex = (_speakingSeqIndex + 1) % actionDef.length;
+        const nextSrc = actionDef[_speakingSeqIndex];
+        if (_avatarVideoCache[nextSrc] === false) {
+          _speakingSeqIndex = 0;
+          actionVideo.play().catch(() => {});
+          return;
+        }
+        // 瞬间切换到 buffer（action 层有 transition 但这里需要立即切换）
+        actionBuffer.style.transition = 'none';
+        actionBuffer.classList.add('visible');
+        actionBuffer.play().catch(() => {});
+        actionVideo.style.transition = 'none';
+        actionVideo.classList.remove('visible');
+        // 交换角色
+        const tmp = actionVideo;
+        actionVideo = actionBuffer;
+        actionBuffer = tmp;
+        _currentVideoPath = nextSrc;
+        // 恢复 transition（用于回到 idle 时的淡出）
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          actionVideoA.style.transition = '';
+          actionVideoB.style.transition = '';
+        }));
+        // 预加载下一个
+        _preloadNextSpeaking();
+      } else if (ACTIONS['speaking_v2']) {
+        // 旧模式兼容：speaking ↔ speaking_v2
+        _speakingToggle = !_speakingToggle;
+        const nextSrc = _speakingToggle ? ACTIONS['speaking_v2'] : ACTIONS['speaking'];
+        if (_avatarVideoCache[nextSrc] === false) {
+          _speakingToggle = false;
+          actionVideo.play().catch(() => {});
+          return;
+        }
+        _currentVideoPath = nextSrc;
+        actionVideo.src = nextSrc;
+        actionVideo.load();
         actionVideo.play().catch(() => {});
-        return;
       }
-      _currentVideoPath = nextSrc;
-      actionVideo.src = nextSrc;
-      actionVideo.load();
-      actionVideo.play().catch(() => {});
-    });
+    }
+
+    actionVideoA.addEventListener('ended', _onSpeakingEnded);
+    actionVideoB.addEventListener('ended', _onSpeakingEnded);
 
     // ============================================================
     // Section 7: 手动动作系统
@@ -1225,8 +1374,10 @@
 
     function playManualAction(action) {
       if (isManualPlaying || isVoiceChatActive) return;
-      const videoSrc = ACTIONS[action];
+      let videoSrc = ACTIONS[action];
       if (!videoSrc) return;
+      // sequence 模式手动点击只播第一个
+      if (Array.isArray(videoSrc)) videoSrc = videoSrc[0];
 
       isManualPlaying = true;
       pendingAction = action;
@@ -1239,7 +1390,7 @@
       actionVideo.load();
     }
 
-    actionVideo.addEventListener('canplay', function onManualCanPlay() {
+    actionVideoA.addEventListener('canplay', function onManualCanPlay() {
       if (!pendingAction || isVoiceChatActive) return;
       const action = pendingAction;
       pendingAction = null;
@@ -1271,20 +1422,21 @@
       }, FADE_MS * 0.5);
     }
 
-    actionVideo.addEventListener('ended', () => {
-      if (actionVideo.loop) return;
+    actionVideoA.addEventListener('ended', () => {
+      if (actionVideoA.loop) return;
+      if (isVoiceChatActive) return;  // 语音对话中由 _onSpeakingEnded 处理
       if (idleVideo.paused) idleVideo.play().catch(() => {});
       actionVideo.classList.remove('visible');
       idleVideo.classList.add('visible');
       setTimeout(() => {
-        clearActionVideo();
+        clearActionVideos();
         isManualPlaying = false;
         setButtonsEnabled(true);
         statusEl.textContent = `点击按钮和${CHARACTER?.name || ''}互动吧~`;
       }, FADE_MS);
     });
 
-    actionVideo.addEventListener('error', () => {
+    actionVideoA.addEventListener('error', () => {
       // 清理视频时触发的 error 忽略掉，防止死循环
       if (_suppressVideoErrors) return;
 
@@ -1298,7 +1450,7 @@
       if (isVoiceChatActive) {
         actionVideo.classList.remove('visible');
         idleVideo.classList.add('visible');
-        clearActionVideo();
+        clearActionVideos();
         currentAvatarState = 'idle';
         return;
       }
@@ -1309,7 +1461,7 @@
     function resetToIdle() {
       if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
       actionVideo.classList.remove('visible');
-      clearActionVideo();
+      clearActionVideos();
       actionVideo.loop = false;
       pendingAction = null;
       isManualPlaying = false;
