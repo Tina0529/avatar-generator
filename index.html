@@ -628,6 +628,10 @@
       <div id="qwen-settings" style="display:none">
         <label>DashScope API Key</label>
         <input type="password" id="qwen-api-key-input" placeholder="输入你的阿里云 DashScope API Key" />
+        <div style="font-size:11px;color:#aaa;margin-top:4px;line-height:1.5">
+          ⚠️ Qwen 需先启动本地代理：<br>
+          <code style="background:#1a1a2e;padding:2px 4px;border-radius:3px">node qwen-proxy.js</code>
+        </div>
       </div>
       <label id="speed-label">语速 <span id="speed-value">1.0x</span></label>
       <input type="range" id="speed-range" min="0.8" max="1.5" step="0.1" value="1.0"

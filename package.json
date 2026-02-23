@@ -1,0 +1,26 @@
+{
+  "name": "avatar-generator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "audio-processor.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tina0529/avatar-generator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Tina0529/avatar-generator/issues"
+  },
+  "homepage": "https://github.com/Tina0529/avatar-generator#readme",
+  "dependencies": {
+    "ws": "^8.19.0"
+  }
+}

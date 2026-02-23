@@ -9,7 +9,9 @@ class QwenLiveClient {
     this.systemPrompt = systemPrompt;
     this.functionDeclarations = functionDeclarations || [];
     this.model = options.model || 'qwen3-omni-flash-realtime';
-    this.endpoint = options.endpoint || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime';
+    // 本地代理模式：浏览器连本地代理，代理加 Header 转发给 DashScope
+    // 启动方式：node qwen-proxy.js YOUR_API_KEY
+    this.endpoint = options.endpoint || 'ws://localhost:3001';
     this.ws = null;
 
     // 回调 — 与 GeminiLiveClient / GLMLiveClient 相同接口
@@ -42,9 +44,9 @@ class QwenLiveClient {
 
   connect() {
     return new Promise((resolve, reject) => {
-      // 浏览器 WebSocket 不支持自定义 Headers
-      // DashScope 支持通过 URL 参数传递 API Key
-      const url = `${this.endpoint}?model=${this.model}&Authorization=Bearer%20${this.apiKey}`;
+      // 通过本地代理连接（代理负责加 Authorization Header 转发给 DashScope）
+      // 启动代理：node qwen-proxy.js（无需命令行传 Key，Key 在这里通过 URL 参数传入）
+      const url = `${this.endpoint}?model=${this.model}&key=${encodeURIComponent(this.apiKey)}`;
       this.ws = new WebSocket(url);
       const timeout = setTimeout(() => reject(new Error('Qwen 连接超时（15s）')), 15000);
       let resolved = false;
@@ -141,14 +143,18 @@ class QwenLiveClient {
       };
 
       this.ws.onerror = (err) => {
+        console.error('[Qwen] WebSocket 错误，可能是认证问题或 CORS');
         if (!resolved) { clearTimeout(timeout); reject(err); }
         if (this.onError) this.onError(err);
       };
 
       this.ws.onclose = (ev) => {
-        if (!resolved) { clearTimeout(timeout); reject(new Error(`Qwen 连接关闭: ${ev.code}`)); }
+        console.warn(`[Qwen] 连接关闭: code=${ev.code} reason="${ev.reason || ''}"`,
+          ev.code === 1008 ? '→ 认证失败' :
+          ev.code === 1006 ? '→ 网络异常或被拒绝' :
+          ev.code === 1000 ? '→ 正常关闭' : '');
+        if (!resolved) { clearTimeout(timeout); reject(new Error(`Qwen 连接关闭: code=${ev.code} ${ev.reason || ''}`)); }
         this._stopSendLoop();
-        console.log(`[Qwen] 连接关闭: code=${ev.code} reason=${ev.reason || ''}`);
         if (this.onClose) this.onClose();
       };
     });
