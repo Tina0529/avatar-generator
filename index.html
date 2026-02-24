@@ -373,6 +373,9 @@
       position: relative;
       box-shadow: 0 10px 40px rgba(0,0,0,0.4);
       transition: box-shadow 0.3s;
+      /* 移动端：GPU 级别裁剪，防止合成层溢出 border-radius 边界 */
+      clip-path: inset(0 round 20px);
+      contain: paint;
     }
 
     .avatar-container.voice-active {
@@ -398,33 +401,19 @@
       will-change: opacity;
     }
 
-    /* idle-image: 兜底静态图，视频加载后隐藏 */
     #idle-image { z-index: 1; }
-    #idle-image.hidden { visibility: hidden; opacity: 0; }
-
     .idle-layer {
       z-index: 2;
       opacity: 0;
-      visibility: hidden; /* 移动端：不可见时完全移出 GPU 合成管线 */
+      /* 无过渡：idle 切换瞬间完成，action 层在上面负责交叉淡化 */
     }
-    .idle-layer.visible {
-      opacity: 1;
-      visibility: visible;
-    }
-
+    .idle-layer.visible { opacity: 1; }
     .action-layer {
       z-index: 3;
       opacity: 0;
-      visibility: hidden;
-      /* 淡出时：opacity 先渐变，visibility 延迟到淡出完成后切换 */
-      transition: opacity 0.35s ease-in-out, visibility 0s 0.35s;
+      transition: opacity 0.35s ease-in-out;
     }
-    .action-layer.visible {
-      opacity: 1;
-      visibility: visible;
-      /* 淡入时：visibility 立即可见，opacity 渐变 */
-      transition: opacity 0.35s ease-in-out, visibility 0s;
-    }
+    .action-layer.visible { opacity: 1; }
 
     .voice-section {
       margin-top: 20px;
@@ -896,8 +885,6 @@
           iv.addEventListener('canplay', () => {
             iv.classList.add('visible');
             iv.play().catch(() => {});
-            // 视频就绪后隐藏兜底静态图，防止移动端 GPU 合成层渗透
-            document.getElementById('idle-image').classList.add('hidden');
           }, { once: true });
           iv.load();
         }).catch(err => {
