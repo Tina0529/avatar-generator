@@ -154,13 +154,29 @@ CHARACTERS["star-cat"] = {
             6
         ),
         "speaking": (
-            f"{_CAT_CHARACTER}. The cat has its mouth clearly open with visible lip movements, "
-            "as if explaining something warmly. One paw slightly raised in a gentle explaining gesture. "
-            "Eyes bright and engaged, looking directly at the camera. "
-            "Body leans slightly forward while remaining seated on the rooftop. "
-            "No body shifting, no standing up. Only the mouth, face, and one paw are active. "
-            "At the end, it returns to the exact same neutral seated pose as the beginning, "
-            "with paws together and a calm, gentle smile.",
+            f"{_CAT_CHARACTER}. The cat is speaking with subtle lip movements, "
+            "mouth opening and closing gently as if explaining something. "
+            "One front paw lifts slightly in a gentle gesture. "
+            "Eyes warm and engaged, looking directly at the camera. "
+            "The cat remains in a relaxed upright seated pose on the rooftop throughout. "
+            "No body shifting, no standing up, no leaning forward or backward. "
+            "IMPORTANT: The first frame and last frame must be nearly identical — "
+            "the cat in the same calm seated pose, paws together on the ground, head centered, gentle smile. "
+            "This ensures seamless looping.",
+            6
+        ),
+        "speaking_v2": (
+            f"{_CAT_CHARACTER}. The cat is speaking with subtle natural lip movements. "
+            "One front paw lifts just slightly off the ground in a small unconscious gesture, "
+            "like a person casually moving their hand while chatting — understated, not exaggerated. "
+            "The tail tip sways gently, a slow lazy movement. "
+            "Occasional soft blink, relaxed warm eyes looking at the camera. "
+            "Natural and conversational, not performative. "
+            "The cat remains in a relaxed upright seated pose on the rooftop throughout. "
+            "No big movements, no standing up, no leaning forward or backward. "
+            "IMPORTANT: The first frame and last frame must be nearly identical — "
+            "the cat in the same calm seated pose, paws together on the ground, head centered, gentle smile. "
+            "This ensures seamless looping and smooth transition from other speaking clips.",
             6
         ),
         "listening": (
@@ -224,14 +240,15 @@ CHARACTERS["star-cat"] = {
             6
         ),
         "tail_wag": (
-            f"{_CAT_CHARACTER}. The cat looks back over its shoulder at its own fluffy tail, "
-            "which is raised high and swishing to one side. "
-            "The tail tip glows intensely with star particles trailing like a small comet. "
-            "The cat has a playful surprised expression, one paw reaching back toward the glowing tail. "
-            "Body stays seated on rooftop, only the head turns back and one paw reaches. "
-            "No standing, no jumping. "
-            "At the end, it turns back forward and returns to the exact same neutral pose as the beginning, "
-            "sitting calmly facing the camera.",
+            f"{_CAT_CHARACTER}. The cat sits calmly facing the camera. "
+            "Its fluffy tail slowly rises behind it and sways gently from side to side, "
+            "with a soft faint glow at the tip. "
+            "The cat notices its own tail moving and glances back briefly with a small curious smile, "
+            "then looks back at the camera with a content, happy expression. "
+            "The movement is gentle and lazy, not fast or energetic. "
+            "Body stays seated, paws stay on the ground. No standing, no jumping, no paw gestures. "
+            "At the end, the tail settles down and the cat returns to the exact same neutral pose as the beginning, "
+            "sitting calmly facing the camera with a gentle smile.",
             6
         ),
     },

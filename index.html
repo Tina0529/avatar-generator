@@ -366,7 +366,7 @@
 
     .avatar-container {
       width: 360px;
-      height: 640px;
+      aspect-ratio: 9 / 16;
       background: #000;
       border-radius: 20px;
       overflow: hidden;
@@ -393,6 +393,9 @@
       position: absolute;
       top: 0;
       left: 0;
+      /* GPU 合成层，移动端减少重绘卡顿 */
+      transform: translateZ(0);
+      will-change: opacity;
     }
 
     #idle-image { z-index: 1; }
@@ -543,6 +546,53 @@
       font-size: 14px;
       text-align: center;
     }
+
+    /* ============================================================
+       Mobile Chat View
+       ============================================================ */
+    @media (max-width: 600px) {
+      #chat-view {
+        padding: 12px 10px;
+      }
+
+      .chat-header h1 { font-size: 22px; margin-bottom: 2px; }
+      .chat-header .subtitle { font-size: 12px; margin-bottom: 12px; }
+
+      .avatar-container {
+        width: calc(100vw - 24px);
+        max-width: 360px;
+        border-radius: 16px;
+        /* 限制高度，确保语音按钮可见 */
+        max-height: 60vh;
+        max-height: 60svh; /* svh: 排除手机地址栏的实际视口高度 */
+      }
+
+      .voice-section { margin-top: 14px; gap: 6px; }
+      .voice-btn { width: 56px; height: 56px; font-size: 24px; }
+      .voice-status { font-size: 12px; }
+
+      .action-section { margin-top: 16px; }
+      .section-label { font-size: 11px; margin-bottom: 6px; }
+
+      .action-btn { padding: 10px 16px; font-size: 13px; border-radius: 10px; }
+
+      .settings-toggle { font-size: 12px; margin-top: 12px; }
+      .settings-panel { max-width: 100%; }
+      .settings-panel input, .settings-panel select { font-size: 13px; }
+
+      .status { font-size: 13px; margin-top: 12px; }
+
+      .back-btn { width: 36px; height: 36px; font-size: 16px; top: 10px; left: 10px; }
+    }
+
+    /* 小屏手机（如 iPhone SE 375px） */
+    @media (max-width: 380px) {
+      .avatar-container {
+        width: calc(100vw - 16px);
+        border-radius: 12px;
+      }
+      .action-btn { padding: 8px 12px; font-size: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -569,10 +619,10 @@
 
     <div class="avatar-container" id="avatar-container">
       <img id="idle-image" alt="Avatar" />
-      <video id="idle-video" class="idle-layer" playsinline muted loop></video>
-      <video id="idle-video-b" class="idle-layer" playsinline muted></video>
-      <video id="action-video" class="action-layer" playsinline muted></video>
-      <video id="action-video-b" class="action-layer" playsinline muted></video>
+      <video id="idle-video" class="idle-layer" playsinline webkit-playsinline muted loop preload="auto"></video>
+      <video id="idle-video-b" class="idle-layer" playsinline webkit-playsinline muted preload="none"></video>
+      <video id="action-video" class="action-layer" playsinline webkit-playsinline muted preload="none"></video>
+      <video id="action-video-b" class="action-layer" playsinline webkit-playsinline muted preload="none"></video>
     </div>
 
     <div class="voice-section">
@@ -745,6 +795,8 @@
         video.loop = true;
         video.playsInline = true;
         video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        video.preload = 'metadata';  // 移动端只加载元数据，节省带宽
         // 视频加载失败时降级到图片
         video.addEventListener('error', () => {
           const img = document.createElement('img');
