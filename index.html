@@ -398,19 +398,33 @@
       will-change: opacity;
     }
 
+    /* idle-image: 兜底静态图，视频加载后隐藏 */
     #idle-image { z-index: 1; }
+    #idle-image.hidden { visibility: hidden; opacity: 0; }
+
     .idle-layer {
       z-index: 2;
       opacity: 0;
-      /* 无过渡：idle 切换瞬间完成，action 层在上面负责交叉淡化 */
+      visibility: hidden; /* 移动端：不可见时完全移出 GPU 合成管线 */
     }
+    .idle-layer.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
     .action-layer {
       z-index: 3;
       opacity: 0;
-      transition: opacity 0.35s ease-in-out;
+      visibility: hidden;
+      /* 淡出时：opacity 先渐变，visibility 延迟到淡出完成后切换 */
+      transition: opacity 0.35s ease-in-out, visibility 0s 0.35s;
     }
-    .idle-layer.visible { opacity: 1; }
-    .action-layer.visible { opacity: 1; }
+    .action-layer.visible {
+      opacity: 1;
+      visibility: visible;
+      /* 淡入时：visibility 立即可见，opacity 渐变 */
+      transition: opacity 0.35s ease-in-out, visibility 0s;
+    }
 
     .voice-section {
       margin-top: 20px;
@@ -882,6 +896,8 @@
           iv.addEventListener('canplay', () => {
             iv.classList.add('visible');
             iv.play().catch(() => {});
+            // 视频就绪后隐藏兜底静态图，防止移动端 GPU 合成层渗透
+            document.getElementById('idle-image').classList.add('hidden');
           }, { once: true });
           iv.load();
         }).catch(err => {
@@ -1320,10 +1336,17 @@
       if (!_idleSequence || _idleSequence.length === 0) return;
       if (currentAvatarState !== 'idle') return;
       _idleSeqIndex = (_idleSeqIndex + 1) % _idleSequence.length;
-      // 瞬间切换（idle 层无 CSS transition，自然是即时的）
-      idleBuffer.classList.add('visible');
+
+      // 手动动作期间 idle 层应该隐藏，只做视频交换和预加载，不改 visibility
+      const shouldShow = !isManualPlaying;
+
+      if (shouldShow) {
+        idleBuffer.classList.add('visible');
+      }
       idleBuffer.play().catch(() => {});
-      idleVideo.classList.remove('visible');
+      if (shouldShow) {
+        idleVideo.classList.remove('visible');
+      }
       // 交换角色
       const tmp = idleVideo;
       idleVideo = idleBuffer;
@@ -1584,9 +1607,12 @@
     function _finishManualAction() {
       if (_manualSafetyTimer) { clearTimeout(_manualSafetyTimer); _manualSafetyTimer = null; }
       if (idleVideo.paused) idleVideo.play().catch(() => {});
+      // 确保只有当前 idleVideo 可见，清除所有其他层
+      idleVideoA.classList.remove('visible');
+      idleVideoB.classList.remove('visible');
+      idleVideo.classList.add('visible');
       actionVideoA.classList.remove('visible');
       actionVideoB.classList.remove('visible');
-      idleVideo.classList.add('visible');
       setTimeout(() => {
         clearActionVideos();
         isManualPlaying = false;
