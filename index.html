@@ -396,9 +396,6 @@
       position: absolute;
       top: 0;
       left: 0;
-      /* GPU 合成层，移动端减少重绘卡顿 */
-      transform: translateZ(0);
-      will-change: opacity;
     }
 
     #idle-image { z-index: 1; }
@@ -412,6 +409,8 @@
       z-index: 3;
       opacity: 0;
       transition: opacity 0.35s ease-in-out;
+      /* 仅 action 层需 GPU 提升（有 opacity 过渡动画） */
+      will-change: opacity;
     }
     .action-layer.visible { opacity: 1; }
 
@@ -1342,17 +1341,14 @@
 
     // 安全清除 action 视频的 src，不触发 error 事件
     function clearActionVideos() {
-      _suppressVideoErrors = true;
+      // 只暂停和隐藏，不删除 src 和 load() 重置
+      // 移动端 removeAttribute('src') + load() 会破坏 GPU 层状态（内在尺寸变 0x0），
+      // 导致下次加载新视频时 GPU 合成器图层定位错误
       actionVideo.pause();
-      actionVideo.removeAttribute('src');
       actionVideo.classList.remove('visible');
-      actionVideo.load();
       actionBuffer.pause();
-      actionBuffer.removeAttribute('src');
       actionBuffer.classList.remove('visible');
-      actionBuffer.load();
       _currentVideoPath = null;
-      setTimeout(() => { _suppressVideoErrors = false; }, 50);
     }
 
     // speaking 双缓冲：预加载下一个 speaking 片段
