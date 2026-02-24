@@ -1340,9 +1340,11 @@
       _suppressVideoErrors = true;
       actionVideo.pause();
       actionVideo.removeAttribute('src');
+      actionVideo.classList.remove('visible');
       actionVideo.load();
       actionBuffer.pause();
       actionBuffer.removeAttribute('src');
+      actionBuffer.classList.remove('visible');
       actionBuffer.load();
       _currentVideoPath = null;
       setTimeout(() => { _suppressVideoErrors = false; }, 50);
@@ -1507,6 +1509,9 @@
     // Section 7: 手动动作系统
     // ============================================================
 
+    // 手动动作安全计时器（防止 ended 不触发导致卡死）
+    let _manualSafetyTimer = null;
+
     function playManualAction(action) {
       if (isManualPlaying || isVoiceChatActive) return;
       let videoSrc = ACTIONS[action];
@@ -1514,10 +1519,18 @@
       // sequence 模式手动点击只播第一个
       if (Array.isArray(videoSrc)) videoSrc = videoSrc[0];
 
+      // 重置 actionVideo 指向 A，避免语音对话双缓冲交换后的残留状态
+      actionVideo  = actionVideoA;
+      actionBuffer = actionVideoB;
+
       isManualPlaying = true;
       pendingAction = action;
       setButtonsEnabled(false);
       statusEl.textContent = '准备中...';
+
+      // 确保两个 action 元素都干净
+      actionVideoA.classList.remove('visible');
+      actionVideoB.classList.remove('visible');
 
       actionVideo.loop = false;
       actionVideo.muted = true;
@@ -1525,7 +1538,7 @@
       actionVideo.load();
     }
 
-    actionVideoA.addEventListener('canplay', function onManualCanPlay() {
+    function _onManualCanPlay() {
       if (!pendingAction || isVoiceChatActive) return;
       const action = pendingAction;
       pendingAction = null;
@@ -1542,7 +1555,9 @@
           executeManualCrossfade(action);
         }, remaining - LOOP_END_THRESHOLD * 1000);
       }
-    });
+    }
+    actionVideoA.addEventListener('canplay', _onManualCanPlay);
+    actionVideoB.addEventListener('canplay', _onManualCanPlay);
 
     function executeManualCrossfade(action) {
       waitTimer = null;
@@ -1555,13 +1570,22 @@
           resetToIdle();
         });
       }, FADE_MS * 0.5);
+
+      // 安全计时器：视频最长 15 秒，如果 ended 没触发就强制复位
+      if (_manualSafetyTimer) clearTimeout(_manualSafetyTimer);
+      _manualSafetyTimer = setTimeout(() => {
+        if (isManualPlaying && !isVoiceChatActive) {
+          console.warn('手动动作安全计时器触发，强制复位');
+          _finishManualAction();
+        }
+      }, 15000);
     }
 
-    actionVideoA.addEventListener('ended', () => {
-      if (actionVideoA.loop) return;
-      if (isVoiceChatActive) return;  // 语音对话中由 _onSpeakingEnded 处理
+    function _finishManualAction() {
+      if (_manualSafetyTimer) { clearTimeout(_manualSafetyTimer); _manualSafetyTimer = null; }
       if (idleVideo.paused) idleVideo.play().catch(() => {});
-      actionVideo.classList.remove('visible');
+      actionVideoA.classList.remove('visible');
+      actionVideoB.classList.remove('visible');
       idleVideo.classList.add('visible');
       setTimeout(() => {
         clearActionVideos();
@@ -1569,9 +1593,19 @@
         setButtonsEnabled(true);
         statusEl.textContent = `点击按钮和${CHARACTER?.name || ''}互动吧~`;
       }, FADE_MS);
-    });
+    }
 
-    actionVideoA.addEventListener('error', () => {
+    function _onManualEnded() {
+      // 带 loop 的不处理
+      if (this.loop) return;
+      // 语音对话中由 _onSpeakingEnded 处理
+      if (isVoiceChatActive) return;
+      _finishManualAction();
+    }
+    actionVideoA.addEventListener('ended', _onManualEnded);
+    actionVideoB.addEventListener('ended', _onManualEnded);
+
+    function _onManualError() {
       // 清理视频时触发的 error 忽略掉，防止死循环
       if (_suppressVideoErrors) return;
 
@@ -1584,6 +1618,7 @@
 
       if (isVoiceChatActive) {
         actionVideo.classList.remove('visible');
+        actionBuffer.classList.remove('visible');
         idleVideo.classList.add('visible');
         clearActionVideos();
         currentAvatarState = 'idle';
@@ -1591,11 +1626,15 @@
       }
       statusEl.textContent = '视频加载失败，请先生成视频素材';
       resetToIdle();
-    });
+    }
+    actionVideoA.addEventListener('error', _onManualError);
+    actionVideoB.addEventListener('error', _onManualError);
 
     function resetToIdle() {
       if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
-      actionVideo.classList.remove('visible');
+      if (_manualSafetyTimer) { clearTimeout(_manualSafetyTimer); _manualSafetyTimer = null; }
+      actionVideoA.classList.remove('visible');
+      actionVideoB.classList.remove('visible');
       clearActionVideos();
       actionVideo.loop = false;
       pendingAction = null;
