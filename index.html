@@ -1322,18 +1322,13 @@
     function _onIdleEnded() {
       if (!_idleSequence || _idleSequence.length === 0) return;
       if (currentAvatarState !== 'idle') return;
+      // 手动动作期间完全跳过：不交换、不预加载，idle 保持当前帧静止
+      if (isManualPlaying) return;
+
       _idleSeqIndex = (_idleSeqIndex + 1) % _idleSequence.length;
-
-      // 手动动作期间 idle 层应该隐藏，只做视频交换和预加载，不改 visibility
-      const shouldShow = !isManualPlaying;
-
-      if (shouldShow) {
-        idleBuffer.classList.add('visible');
-      }
+      idleBuffer.classList.add('visible');
       idleBuffer.play().catch(() => {});
-      if (shouldShow) {
-        idleVideo.classList.remove('visible');
-      }
+      idleVideo.classList.remove('visible');
       // 交换角色
       const tmp = idleVideo;
       idleVideo = idleBuffer;
@@ -1572,7 +1567,7 @@
     function executeManualCrossfade(action) {
       waitTimer = null;
       actionVideo.classList.add('visible');
-      idleVideo.classList.remove('visible');
+      // idle 保持可见（z-index 2 在 action z-index 3 下面），action 淡入自然覆盖
       statusEl.textContent = ACTION_LABELS[action] || '正在播放...';
       setTimeout(() => {
         actionVideo.play().catch(err => {
@@ -1593,11 +1588,12 @@
 
     function _finishManualAction() {
       if (_manualSafetyTimer) { clearTimeout(_manualSafetyTimer); _manualSafetyTimer = null; }
-      if (idleVideo.paused) idleVideo.play().catch(() => {});
-      // 确保只有当前 idleVideo 可见，清除所有其他层
-      idleVideoA.classList.remove('visible');
-      idleVideoB.classList.remove('visible');
-      idleVideo.classList.add('visible');
+      // idle 一直在 z-index 2 下面可见，确保在播放（sequence 模式可能已 ended）
+      if (idleVideo.paused || idleVideo.ended) {
+        idleVideo.currentTime = 0;
+        idleVideo.play().catch(() => {});
+      }
+      // 只淡出 action 层（z-index 3），idle 自然露出
       actionVideoA.classList.remove('visible');
       actionVideoB.classList.remove('visible');
       setTimeout(() => {
